@@ -1,0 +1,13 @@
+{
+  "name": "jumpstart-slack-bot",
+  "version": "1.0.0",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "@slack/bolt": "^4.4.0",
+    "airtable": "^0.12.2",
+    "dotenv": "^17.2.0"
+  }
+}
