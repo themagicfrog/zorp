@@ -130,7 +130,9 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
 
     console.log('📝 Attempting to create Airtable record with fields:', fields);
 
-    await base('Coin Requests').create({ fields });
+    await base('Coin Requests').create([
+      { fields }
+    ]);
 
     console.log('✅ Airtable record created successfully');
 
@@ -147,7 +149,7 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
     try {
       await client.chat.postMessage({
         channel: body.user.id,
-        text: `Sorry! There was an error submitting your request. Please try again or contact support.`
+        text: `oopsies! zorp couldn't submit your request, pls ask @magic frog for help`
       });
     } catch (dmError) {
       console.error('⚠️ Could not send error DM:', dmError);
