@@ -198,7 +198,7 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
       'Display Name': displayName,
       'Action': action,
       'Status': 'Pending',
-      'Thread Link': threadLink,
+      'Message Link': threadLink,
       'Request Date': now
     };
 
@@ -245,14 +245,14 @@ app.command('/update-coins', async ({ ack, body, client }) => {
     if (body.user_id !== 'U06UYA4AH6F') { 
       await client.chat.postMessage({
         channel: body.user_id,
-        text: 'Sorry, only authorized users can run this command.'
+        text: 'sorry, you cant use this command'
       });
       return;
     }
 
     await client.chat.postMessage({
       channel: body.user_id,
-      text: '🔄 Starting user sync... This may take a moment.'
+      text: 'syncing users coin amounts... beep beep boop'
     });
 
     const allRequests = await base('Coin Requests').select().all();
@@ -269,7 +269,6 @@ app.command('/update-coins', async ({ ack, body, client }) => {
     let createdCount = 0;
     let updatedCount = 0;
 
-    // Process each unique user
     for (const [slackId, displayName] of uniqueUsers) {
       try {
         await getOrCreateUser(slackId, displayName);
@@ -282,14 +281,14 @@ app.command('/update-coins', async ({ ack, body, client }) => {
 
     await client.chat.postMessage({
       channel: body.user_id,
-      text: `✅ User sync complete! Processed ${uniqueUsers.size} users.`
+      text: `user sync complete! processed ${uniqueUsers.size} users`
     });
 
   } catch (error) {
     console.error('⚠️ Error in /sync-users command:', error);
     await client.chat.postMessage({
       channel: body.user_id,
-      text: '❌ Error during user sync. Check logs for details.'
+      text: 'error during user sync'
     });
   }
 });
