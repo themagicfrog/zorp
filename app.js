@@ -293,6 +293,214 @@ app.command('/update-coins', async ({ ack, body, client }) => {
   }
 });
 
+// Function to get user's current coin balance
+async function getUserCoins(slackId) {
+  try {
+    const userRecords = await base('Users').select({
+      filterByFormula: `{Slack ID} = '${slackId}'`
+    }).firstPage();
+
+    if (userRecords.length > 0) {
+      return userRecords[0].get('Coins') || 0;
+    }
+    return 0;
+  } catch (error) {
+    console.error('⚠️ Error getting user coins:', error);
+    return 0;
+  }
+}
+
+// Function to update user's stickersheet count
+async function addStickersheet(slackId) {
+  try {
+    const userRecords = await base('Users').select({
+      filterByFormula: `{Slack ID} = '${slackId}'`
+    }).firstPage();
+
+    if (userRecords.length > 0) {
+      const currentStickersheets = userRecords[0].get('Stickersheets') || 0;
+      const newStickersheets = currentStickersheets + 1;
+
+      await base('Users').update([
+        {
+          id: userRecords[0].id,
+          fields: {
+            'Stickersheets': newStickersheets
+          }
+        }
+      ]);
+
+      console.log(`✅ Added stickersheet for user ${slackId}: ${newStickersheets} total`);
+      return newStickersheets;
+    }
+  } catch (error) {
+    console.error('⚠️ Error adding stickersheet:', error);
+    throw error;
+  }
+}
+
+// Function to deduct coins from user
+async function deductCoins(slackId, amount) {
+  try {
+    const userRecords = await base('Users').select({
+      filterByFormula: `{Slack ID} = '${slackId}'`
+    }).firstPage();
+
+    if (userRecords.length > 0) {
+      const currentCoins = userRecords[0].get('Coins') || 0;
+      const newCoins = currentCoins - amount;
+
+      if (newCoins < 0) {
+        throw new Error('Insufficient coins');
+      }
+
+      await base('Users').update([
+        {
+          id: userRecords[0].id,
+          fields: {
+            'Coins': newCoins
+          }
+        }
+      ]);
+
+      console.log(`✅ Deducted ${amount} coins from user ${slackId}: ${newCoins} remaining`);
+      return newCoins;
+    }
+  } catch (error) {
+    console.error('⚠️ Error deducting coins:', error);
+    throw error;
+  }
+}
+
+app.command('/shop', async ({ ack, body, client }) => {
+  try {
+    await ack();
+    const triggerId = body.trigger_id;
+    const slackId = body.user.id;
+
+    // Get user's current coin balance
+    const currentCoins = await getUserCoins(slackId);
+
+    await client.views.open({
+      trigger_id: triggerId,
+      view: {
+        type: 'modal',
+        callback_id: 'shop_modal',
+        private_metadata: JSON.stringify({ slackId, currentCoins }),
+        title: { type: 'plain_text', text: 'Zorp Shop' },
+        submit: { type: 'plain_text', text: 'Buy Stickersheet' },
+        close: { type: 'plain_text', text: 'Cancel' },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*Welcome to the Zorp Shop!* 🛍️\n\nYou currently have *${currentCoins} coins* in your balance.`
+            }
+          },
+          {
+            type: 'divider'
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*Available Items:*\n\n🎨 **Stickersheet** - 10 coins\n*Get a cool stickersheet for your collection!*"
+            }
+          },
+          {
+            type: 'divider'
+          },
+          {
+            type: 'context',
+            elements: [
+              {
+                type: 'mrkdwn',
+                text: currentCoins >= 10 
+                  ? '✅ You have enough coins to buy a stickersheet!'
+                  : '❌ You need 10 coins to buy a stickersheet. Keep collecting!'
+              }
+            ]
+          }
+        ]
+      }
+    });
+  } catch (error) {
+    console.error('⚠️ Error in /shop command:', JSON.stringify(error, null, 2));
+  }
+});
+
+app.view('shop_modal', async ({ ack, view, body, client }) => {
+  try {
+    await ack();
+
+    const metadata = JSON.parse(view.private_metadata);
+    const { slackId, currentCoins } = metadata;
+
+    // Check if user has enough coins
+    if (currentCoins < 10) {
+      await client.chat.postMessage({
+        channel: slackId,
+        text: '❌ Sorry! You need 10 coins to buy a stickersheet. Keep collecting coins with `/collect`!'
+      });
+      return;
+    }
+
+    // Process the purchase
+    await Promise.all([
+      deductCoins(slackId, 10),
+      addStickersheet(slackId)
+    ]);
+
+    // Get updated balance
+    const newBalance = await getUserCoins(slackId);
+    const newStickersheets = await getUserStickersheets(slackId);
+
+    const purchaseMessages = [
+      `🎉 Purchase successful! You now have ${newBalance} coins and ${newStickersheets} stickersheets!`,
+      `✨ Yay! Stickersheet acquired! Your balance: ${newBalance} coins, Stickersheets: ${newStickersheets}`,
+      `🚀 Woo! You got a stickersheet! Coins remaining: ${newBalance}, Total stickersheets: ${newStickersheets}`,
+      `🌟 Amazing! Stickersheet purchased! You have ${newBalance} coins left and ${newStickersheets} stickersheets now!`
+    ];
+
+    const randomMessage = purchaseMessages[Math.floor(Math.random() * purchaseMessages.length)];
+
+    await client.chat.postMessage({
+      channel: slackId,
+      text: randomMessage
+    });
+
+  } catch (error) {
+    console.error('⚠️ Error in shop_modal view:', JSON.stringify(error, null, 2));
+    
+    try {
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: '❌ Sorry! There was an error processing your purchase. Please try again or contact support.'
+      });
+    } catch (dmError) {
+      console.error('⚠️ Could not send error DM:', dmError);
+    }
+  }
+});
+
+// Helper function to get user's stickersheet count
+async function getUserStickersheets(slackId) {
+  try {
+    const userRecords = await base('Users').select({
+      filterByFormula: `{Slack ID} = '${slackId}'`
+    }).firstPage();
+
+    if (userRecords.length > 0) {
+      return userRecords[0].get('Stickersheets') || 0;
+    }
+    return 0;
+  } catch (error) {
+    console.error('⚠️ Error getting user stickersheets:', error);
+    return 0;
+  }
+}
+
 const port = process.env.PORT || 3000;
 receiver.app.listen(port, () => {
   console.log(`🚀 Slack Bolt app running on port ${port}`);
