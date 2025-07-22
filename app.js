@@ -405,7 +405,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*Available Items:*\n\n🎨 **Stickersheet** - 10 coins\n*Get a cool stickersheet for your collection!*"
+              text: '*Available Items:*\n\n🎨 Stickersheet - 10 coins\n*Get a cool stickersheet for your collection!*'
             }
           },
           {
