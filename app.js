@@ -70,6 +70,10 @@ app.command('/collect', async ({ ack, body, client }) => {
             element: {
               type: 'static_select',
               action_id: 'action_selected',
+              placeholder: {
+                type: 'plain_text',
+                text: 'select an action'
+              },
               options: COIN_ACTIONS.map(a => ({
                 text: { type: 'plain_text', text: `${a.label}${a.coins ? ` (${a.coins} coins)` : ''}` },
                 value: a.value
@@ -106,15 +110,7 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
     const slackId = body.user.id;
     const now = new Date().toISOString().split('T')[0];
 
-    let displayName = body.user.name;
-    try {
-      const userInfo = await client.users.info({
-        user: slackId
-      });
-      displayName = userInfo.user.profile.display_name || userInfo.user.profile.real_name || body.user.name;
-    } catch (userError) {
-      console.log('⚠️ Could not fetch user info, using fallback name:', body.user.name);
-    }
+    const displayName = body.user.name;
 
     const selectedAction = COIN_ACTIONS.find(a => a.value === action);
     const coinsGiven = selectedAction && selectedAction.coins ? selectedAction.coins : null;
@@ -128,14 +124,9 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
       'Request Date': now
     };
 
-
     if (coinsGiven !== null) {
       fields['Coins Given'] = coinsGiven;
     }
-
-    await base('Coin Requests').create([
-      { fields }
-    ]);
 
     const confirmationMessages = [
       `hiya! my spaceship has gotten your request :D the minions will look at it soon`,
@@ -146,10 +137,13 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
 
     const randomMessage = confirmationMessages[Math.floor(Math.random() * confirmationMessages.length)];
 
-    await client.chat.postMessage({
-      channel: slackId,
-      text: randomMessage
-    });
+    await Promise.all([
+      base('Coin Requests').create([{ fields }]),
+      client.chat.postMessage({
+        channel: slackId,
+        text: randomMessage
+      })
+    ]);
 
   } catch (error) {
     
