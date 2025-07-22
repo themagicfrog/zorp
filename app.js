@@ -42,7 +42,16 @@ app.command('/collect', async ({ ack, body, client }) => {
   try {
     await ack();
     const triggerId = body.trigger_id;
-    const threadTs = body.thread_ts || body.message_ts;
+
+    // More robust thread detection
+    let threadTs;
+    if (body.thread_ts) {
+      threadTs = body.thread_ts;
+    } else if (body.message_ts) {
+      threadTs = body.message_ts;
+    } else {
+      threadTs = new Date().getTime().toString();
+    }
 
     await client.views.open({
       trigger_id: triggerId,
@@ -103,142 +112,4 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
   } catch (error) {
     console.error('⚠️ Error in collect_modal view:', JSON.stringify(error, null, 2));
   }
-});
-
-// ------------------ /shop COMMAND ------------------
-
-const STICKERS = [
-  { name: 'Cool Frog', cost: 5 },
-  { name: 'Rainbow Jumper', cost: 10 },
-  { name: 'Zappy Zap', cost: 7 }
-];
-
-app.command('/shop', async ({ ack, body, client }) => {
-  try {
-    await ack();
-
-    await client.views.open({
-      trigger_id: body.trigger_id,
-      view: {
-        type: 'modal',
-        callback_id: 'shop_modal',
-        title: { type: 'plain_text', text: 'Jumpstart Sticker Shop' },
-        submit: { type: 'plain_text', text: 'Buy' },
-        close: { type: 'plain_text', text: 'Cancel' },
-        blocks: [
-          {
-            type: 'input',
-            block_id: 'sticker_block',
-            label: { type: 'plain_text', text: 'Pick your sticker' },
-            element: {
-              type: 'static_select',
-              action_id: 'sticker_selected',
-              options: STICKERS.map(s => ({
-                text: { type: 'plain_text', text: `${s.name} (${s.cost} coins)` },
-                value: s.name
-              }))
-            }
-          }
-        ]
-      }
-    });
-  } catch (error) {
-    console.error('⚠️ Error in /shop command:', JSON.stringify(error, null, 2));
-  }
-});
-
-app.view('shop_modal', async ({ ack, view, body, client }) => {
-  try {
-    await ack();
-    const userId = body.user.id;
-    const stickerName = view.state.values['sticker_block']['sticker_selected'].selected_option.value;
-    const sticker = STICKERS.find(s => s.name === stickerName);
-
-    const userRecords = await base('Users').select({ filterByFormula: `{Slack ID} = '${userId}'` }).firstPage();
-    const user = userRecords[0];
-
-    if (!user) {
-      await client.chat.postMessage({ channel: userId, text: `😢 Could not find your user record.` });
-      return;
-    }
-
-    const currentCoins = user.fields['Coins'] || 0;
-    const stickers = user.fields['Stickers Bought'] || [];
-
-    if (currentCoins < sticker.cost) {
-      await client.chat.postMessage({ channel: userId, text: `😔 You need ${sticker.cost} coins but only have ${currentCoins}.` });
-      return;
-    }
-
-    await base('Users').update(user.id, {
-      'Coins': currentCoins - sticker.cost,
-      'Stickers Bought': [...stickers, stickerName]
-    });
-
-    await client.chat.postMessage({
-      channel: userId,
-      text: `🎉 You bought *${stickerName}*! You now have *${currentCoins - sticker.cost}* coins.`
-    });
-  } catch (error) {
-    console.error('⚠️ Error in shop_modal view:', JSON.stringify(error, null, 2));
-  }
-});
-
-// ------------------ BACKGROUND COIN GRANTER ------------------
-
-async function processApprovedRequests() {
-  try {
-    const approved = await base('Coin Requests').select({
-      filterByFormula: `{Status} = 'Approved'`,
-      maxRecords: 10
-    }).firstPage();
-
-    for (const request of approved) {
-      try {
-        const slackId = request.fields['Slack ID'];
-        const coinsToAdd = request.fields['Coins Given'] || 0;
-
-        const userRecords = await base('Users').select({
-          filterByFormula: `{Slack ID} = '${slackId}'`
-        }).firstPage();
-
-        const user = userRecords[0];
-        if (!user) continue;
-
-        const currentCoins = user.fields['Coins'] || 0;
-        await base('Users').update(user.id, {
-          'Coins': currentCoins + coinsToAdd
-        });
-
-        await base('Coin Requests').update(request.id, {
-          'Status': 'Fulfilled'
-        });
-
-        await app.client.chat.postMessage({
-          token: process.env.SLACK_BOT_TOKEN,
-          channel: slackId,
-          text: `🎉 Your request was approved! You earned *${coinsToAdd}* coins.`
-        });
-      } catch (innerErr) {
-        console.error('⚠️ Error processing single approved request:', JSON.stringify(innerErr, null, 2));
-      }
-    }
-  } catch (err) {
-    console.error('⚠️ Error in processApprovedRequests:', JSON.stringify(err, null, 2));
-  }
-}
-
-setInterval(processApprovedRequests, 60 * 1000); // every 60 seconds
-
-// ------------------ GLOBAL ERROR HANDLER ------------------
-
-app.error((error) => {
-  console.error('🚨 Global Slack error:', JSON.stringify(error, null, 2));
-});
-
-// ------------------ START SERVER ------------------
-
-const port = process.env.PORT || 3000;
-receiver.app.listen(port, () => {
-  console.log(`⚡️ Slack Bolt app is running on port ${port}`);
 });
