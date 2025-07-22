@@ -72,6 +72,20 @@ app.command('/collect', async ({ ack, body, client }) => {
                 value: a.value
               }))
             }
+          },
+          {
+            type: 'input',
+            block_id: 'thread_link_block',
+            label: { type: 'plain_text', text: 'Thread Link' },
+            element: {
+              type: 'plain_text_input',
+              action_id: 'thread_link_input',
+              placeholder: {
+                type: 'plain_text',
+                text: 'Paste the link to your thread or post here...'
+              }
+            },
+            optional: true
           }
         ]
       }
@@ -86,26 +100,58 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
     await ack();
 
     const action = view.state.values['action_block']['action_selected'].selected_option.value;
+    const threadLink = view.state.values['thread_link_block']['thread_link_input'].value || '';
     const slackId = body.user.id;
     const displayName = body.user.name;
     const now = new Date().toISOString().split('T')[0];
 
-    await base('Coin Requests').create({
-      fields: {
-        'Slack ID': slackId,
-        'Display Name': displayName,
-        'Action': action,
-        'Status': 'Pending',
-        'Request Date': now
-      }
-    });
+    // Find the selected action to get the coin value
+    const selectedAction = COIN_ACTIONS.find(a => a.value === action);
+    const coinsGiven = selectedAction && selectedAction.coins ? selectedAction.coins : null;
+
+    // Prepare fields for Airtable
+    const fields = {
+      'Slack ID': slackId,
+      'Display Name': displayName,
+      'Action': action,
+      'Status': 'Pending',
+      'Request Date': now
+    };
+
+    // Add Thread Link if provided
+    if (threadLink) {
+      fields['Thread Link'] = threadLink;
+    }
+
+    // Add Coins Given if the action has a coin value
+    if (coinsGiven !== null) {
+      fields['Coins Given'] = coinsGiven;
+    }
+
+    console.log('📝 Attempting to create Airtable record with fields:', fields);
+
+    await base('Coin Requests').create({ fields });
+
+    console.log('✅ Airtable record created successfully');
 
     await client.chat.postMessage({
       channel: slackId,
       text: `hi! your ${action} request has been submitted yay`
     });
+
+    console.log('✅ DM sent successfully');
   } catch (error) {
     console.error('⚠️ Error in collect_modal view:', JSON.stringify(error, null, 2));
+    
+    // Try to send error message to user
+    try {
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: `Sorry! There was an error submitting your request. Please try again or contact support.`
+      });
+    } catch (dmError) {
+      console.error('⚠️ Could not send error DM:', dmError);
+    }
   }
 });
 
