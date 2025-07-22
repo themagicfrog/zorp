@@ -15,10 +15,8 @@ const app = new App({
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
 
-// Function to get or create user record
 async function getOrCreateUser(slackId, displayName) {
   try {
-    // Try to find existing user
     const existingUsers = await base('Users').select({
       filterByFormula: `{Slack ID} = '${slackId}'`
     }).firstPage();
@@ -27,7 +25,6 @@ async function getOrCreateUser(slackId, displayName) {
       return existingUsers[0];
     }
 
-    // Create new user if not found
     const newUser = await base('Users').create([
       {
         fields: {
@@ -46,15 +43,12 @@ async function getOrCreateUser(slackId, displayName) {
   }
 }
 
-// Function to update user's coin total
 async function updateUserCoins(slackId) {
   try {
-    // Get all approved coin requests for this user
     const approvedRequests = await base('Coin Requests').select({
       filterByFormula: `AND({Slack ID} = '${slackId}', {Status} = 'Approved')`
     }).all();
 
-    // Calculate total coins
     let totalCoins = 0;
     approvedRequests.forEach(record => {
       const coins = record.get('Coins Given');
@@ -63,7 +57,6 @@ async function updateUserCoins(slackId) {
       }
     });
 
-    // Update user record
     const userRecords = await base('Users').select({
       filterByFormula: `{Slack ID} = '${slackId}'`
     }).firstPage();
@@ -84,7 +77,6 @@ async function updateUserCoins(slackId) {
   }
 }
 
-// Function to sync user when coin request is created
 async function syncUserOnRequest(slackId, displayName) {
   try {
     await getOrCreateUser(slackId, displayName);
@@ -244,13 +236,13 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
   }
 });
 
-// Command to manually sync all users and update their coin totals
-app.command('/sync-users', async ({ ack, body, client }) => {
+
+app.command('/update-coins', async ({ ack, body, client }) => {
   try {
     await ack();
     
-    // Only allow specific users to run this command (you can modify this)
-    if (body.user_id !== 'U06UYA4AH6F') { // Replace with your Slack ID
+    
+    if (body.user_id !== 'U06UYA4AH6F') { 
       await client.chat.postMessage({
         channel: body.user_id,
         text: 'Sorry, only authorized users can run this command.'
@@ -263,7 +255,6 @@ app.command('/sync-users', async ({ ack, body, client }) => {
       text: '🔄 Starting user sync... This may take a moment.'
     });
 
-    // Get all unique users from coin requests
     const allRequests = await base('Coin Requests').select().all();
     const uniqueUsers = new Map();
 
