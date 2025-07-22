@@ -39,61 +39,70 @@ const COIN_ACTIONS = [
 ];
 
 app.command('/collect', async ({ ack, body, client }) => {
-  await ack();
-  const triggerId = body.trigger_id;
-  const threadTs = body.thread_ts || body.message_ts;
+  try {
+    await ack();
+    const triggerId = body.trigger_id;
+    const threadTs = body.thread_ts || body.message_ts;
 
-  await client.views.open({
-    trigger_id: triggerId,
-    view: {
-      type: 'modal',
-      callback_id: 'collect_modal',
-      private_metadata: JSON.stringify({ thread_ts: threadTs, channel_id: body.channel_id }),
-      title: { type: 'plain_text', text: 'Collect Coins' },
-      submit: { type: 'plain_text', text: 'Submit' },
-      close: { type: 'plain_text', text: 'Cancel' },
-      blocks: [
-        {
-          type: 'input',
-          block_id: 'action_block',
-          label: { type: 'plain_text', text: 'What did you do?' },
-          element: {
-            type: 'static_select',
-            action_id: 'action_selected',
-            options: COIN_ACTIONS.map(a => ({
-              text: { type: 'plain_text', text: `${a.label}${a.coins ? ` (${a.coins} coins)` : ''}` },
-              value: a.value
-            }))
+    await client.views.open({
+      trigger_id: triggerId,
+      view: {
+        type: 'modal',
+        callback_id: 'collect_modal',
+        private_metadata: JSON.stringify({ thread_ts: threadTs, channel_id: body.channel_id }),
+        title: { type: 'plain_text', text: 'Collect Coins' },
+        submit: { type: 'plain_text', text: 'Submit' },
+        close: { type: 'plain_text', text: 'Cancel' },
+        blocks: [
+          {
+            type: 'input',
+            block_id: 'action_block',
+            label: { type: 'plain_text', text: 'What did you do?' },
+            element: {
+              type: 'static_select',
+              action_id: 'action_selected',
+              options: COIN_ACTIONS.map(a => ({
+                text: { type: 'plain_text', text: `${a.label}${a.coins ? ` (${a.coins} coins)` : ''}` },
+                value: a.value
+              }))
+            }
           }
-        }
-      ]
-    }
-  });
+        ]
+      }
+    });
+  } catch (error) {
+    console.error('⚠️ Error in /collect command:', JSON.stringify(error, null, 2));
+  }
 });
 
 app.view('collect_modal', async ({ ack, view, body, client }) => {
-  await ack();
-  const action = view.state.values['action_block']['action_selected'].selected_option.value;
-  const metadata = JSON.parse(view.private_metadata);
-  const slackId = body.user.id;
-  const displayName = body.user.name;
-  const now = new Date().toISOString().split('T')[0];
+  try {
+    await ack();
 
-  await base('Coin Requests').create({
-    fields: {
-      'Slack ID': slackId,
-      'Display Name': displayName,
-      'Action': action,
-      'Status': 'Pending',
-      'Request Date': now,
-      'Thread Link': `https://slack.com/app_redirect?channel=${metadata.channel_id}&message_ts=${metadata.thread_ts}`
-    }
-  });
+    const action = view.state.values['action_block']['action_selected'].selected_option.value;
+    const metadata = JSON.parse(view.private_metadata);
+    const slackId = body.user.id;
+    const displayName = body.user.name;
+    const now = new Date().toISOString().split('T')[0];
 
-  await client.chat.postMessage({
-    channel: slackId,
-    text: `✅ Got it! Your *${action}* coin request is submitted and awaiting review.`
-  });
+    await base('Coin Requests').create({
+      fields: {
+        'Slack ID': slackId,
+        'Display Name': displayName,
+        'Action': action,
+        'Status': 'Pending',
+        'Request Date': now,
+        'Thread Link': `https://slack.com/app_redirect?channel=${metadata.channel_id}&message_ts=${metadata.thread_ts}`
+      }
+    });
+
+    await client.chat.postMessage({
+      channel: slackId,
+      text: `✅ Got it! Your *${action}* coin request is submitted and awaiting review.`
+    });
+  } catch (error) {
+    console.error('⚠️ Error in collect_modal view:', JSON.stringify(error, null, 2));
+  }
 });
 
 // ------------------ /shop COMMAND ------------------
@@ -105,62 +114,74 @@ const STICKERS = [
 ];
 
 app.command('/shop', async ({ ack, body, client }) => {
-  await ack();
+  try {
+    await ack();
 
-  await client.views.open({
-    trigger_id: body.trigger_id,
-    view: {
-      type: 'modal',
-      callback_id: 'shop_modal',
-      title: { type: 'plain_text', text: 'Jumpstart Sticker Shop' },
-      submit: { type: 'plain_text', text: 'Buy' },
-      close: { type: 'plain_text', text: 'Cancel' },
-      blocks: [
-        {
-          type: 'input',
-          block_id: 'sticker_block',
-          label: { type: 'plain_text', text: 'Pick your sticker' },
-          element: {
-            type: 'static_select',
-            action_id: 'sticker_selected',
-            options: STICKERS.map(s => ({
-              text: { type: 'plain_text', text: `${s.name} (${s.cost} coins)` },
-              value: s.name
-            }))
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: {
+        type: 'modal',
+        callback_id: 'shop_modal',
+        title: { type: 'plain_text', text: 'Jumpstart Sticker Shop' },
+        submit: { type: 'plain_text', text: 'Buy' },
+        close: { type: 'plain_text', text: 'Cancel' },
+        blocks: [
+          {
+            type: 'input',
+            block_id: 'sticker_block',
+            label: { type: 'plain_text', text: 'Pick your sticker' },
+            element: {
+              type: 'static_select',
+              action_id: 'sticker_selected',
+              options: STICKERS.map(s => ({
+                text: { type: 'plain_text', text: `${s.name} (${s.cost} coins)` },
+                value: s.name
+              }))
+            }
           }
-        }
-      ]
-    }
-  });
+        ]
+      }
+    });
+  } catch (error) {
+    console.error('⚠️ Error in /shop command:', JSON.stringify(error, null, 2));
+  }
 });
 
 app.view('shop_modal', async ({ ack, view, body, client }) => {
-  await ack();
-  const userId = body.user.id;
-  const stickerName = view.state.values['sticker_block']['sticker_selected'].selected_option.value;
-  const sticker = STICKERS.find(s => s.name === stickerName);
+  try {
+    await ack();
+    const userId = body.user.id;
+    const stickerName = view.state.values['sticker_block']['sticker_selected'].selected_option.value;
+    const sticker = STICKERS.find(s => s.name === stickerName);
 
-  const userRecords = await base('Users').select({ filterByFormula: `{Slack ID} = '${userId}'` }).firstPage();
-  const user = userRecords[0];
+    const userRecords = await base('Users').select({ filterByFormula: `{Slack ID} = '${userId}'` }).firstPage();
+    const user = userRecords[0];
 
-  if (!user) return client.chat.postMessage({ channel: userId, text: `😢 Could not find your user record.` });
+    if (!user) {
+      await client.chat.postMessage({ channel: userId, text: `😢 Could not find your user record.` });
+      return;
+    }
 
-  const currentCoins = user.fields['Coins'] || 0;
-  const stickers = user.fields['Stickers Bought'] || [];
+    const currentCoins = user.fields['Coins'] || 0;
+    const stickers = user.fields['Stickers Bought'] || [];
 
-  if (currentCoins < sticker.cost) {
-    return client.chat.postMessage({ channel: userId, text: `😔 You need ${sticker.cost} coins but only have ${currentCoins}.` });
+    if (currentCoins < sticker.cost) {
+      await client.chat.postMessage({ channel: userId, text: `😔 You need ${sticker.cost} coins but only have ${currentCoins}.` });
+      return;
+    }
+
+    await base('Users').update(user.id, {
+      'Coins': currentCoins - sticker.cost,
+      'Stickers Bought': [...stickers, stickerName]
+    });
+
+    await client.chat.postMessage({
+      channel: userId,
+      text: `🎉 You bought *${stickerName}*! You now have *${currentCoins - sticker.cost}* coins.`
+    });
+  } catch (error) {
+    console.error('⚠️ Error in shop_modal view:', JSON.stringify(error, null, 2));
   }
-
-  await base('Users').update(user.id, {
-    'Coins': currentCoins - sticker.cost,
-    'Stickers Bought': [...stickers, stickerName]
-  });
-
-  await client.chat.postMessage({
-    channel: userId,
-    text: `🎉 You bought *${stickerName}*! You now have *${currentCoins - sticker.cost}* coins.`
-  });
 });
 
 // ------------------ BACKGROUND COIN GRANTER ------------------
@@ -199,17 +220,23 @@ async function processApprovedRequests() {
           text: `🎉 Your request was approved! You earned *${coinsToAdd}* coins.`
         });
       } catch (innerErr) {
-        console.error('Error processing single approved request:', innerErr);
+        console.error('⚠️ Error processing single approved request:', JSON.stringify(innerErr, null, 2));
       }
     }
   } catch (err) {
-    console.error('Error in processApprovedRequests:', err);
+    console.error('⚠️ Error in processApprovedRequests:', JSON.stringify(err, null, 2));
   }
 }
 
 setInterval(processApprovedRequests, 60 * 1000); // every 60 seconds
 
-// ------------------ START ------------------
+// ------------------ GLOBAL ERROR HANDLER ------------------
+
+app.error((error) => {
+  console.error('🚨 Global Slack error:', JSON.stringify(error, null, 2));
+});
+
+// ------------------ START SERVER ------------------
 
 const port = process.env.PORT || 3000;
 receiver.app.listen(port, () => {
