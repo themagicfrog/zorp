@@ -34,8 +34,8 @@ async function getOrCreateUser(slackId, displayName) {
           'Slack ID': slackId,
           'Display Name': displayName,
           'Coins': 0,
-          'Stickersheets': 0,
           'Fulfilled': false
+          // Removed Stickersheets field - add it back with correct data type if needed
         }
       }
     ]);
