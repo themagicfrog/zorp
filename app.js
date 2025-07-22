@@ -87,8 +87,7 @@ app.command('/collect', async ({ ack, body, client }) => {
                 type: 'plain_text',
                 text: 'paste the link to your #jumpstart message with proof'
               }
-            },
-            optional: true
+            }
           }
         ]
       }
@@ -139,10 +138,10 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
     ]);
 
     const confirmationMessages = [
-      `hiya! my spaceship has gotten your request`,
-      `wahoo! my alien friends got your submission. we'll be scanning it soon`,
-      `beep beep boop! the cows are mooing (aka we got your request)`,
-      `your request is now at our UFO. you'll get your coins soon`,
+      `hiya! my spaceship has gotten your request :D the minions will look at it soon`,
+      `wahoo! my alien friends got your submission. we'll be scanning it soon :)`,
+      `beep beep boop! the cows are mooing (aka we got your request, the minions will look at it soon)`,
+      `your request is now at our UFO! you'll get your coins soon (as long as you're not a devious minion)`,
     ];
 
     const randomMessage = confirmationMessages[Math.floor(Math.random() * confirmationMessages.length)];
