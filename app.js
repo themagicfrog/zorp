@@ -318,8 +318,10 @@ async function addStickersheet(slackId) {
     }).firstPage();
 
     if (userRecords.length > 0) {
-      const currentStickersheets = userRecords[0].get('Stickersheets') || 0;
-      const newStickersheets = currentStickersheets + 1;
+      const currentStickersheets = userRecords[0].get('Stickersheets') || [];
+      
+      // Add "Stickersheet 1" to the multiselect array
+      const newStickersheets = [...currentStickersheets, 'Stickersheet 1'];
 
       await base('Users').update([
         {
@@ -330,8 +332,8 @@ async function addStickersheet(slackId) {
         }
       ]);
 
-      console.log(`✅ Added stickersheet for user ${slackId}: ${newStickersheets} total`);
-      return newStickersheets;
+      console.log(`✅ Added stickersheet for user ${slackId}: ${newStickersheets.length} total`);
+      return newStickersheets.length;
     }
   } catch (error) {
     console.error('⚠️ Error adding stickersheet:', error);
@@ -376,81 +378,58 @@ app.command('/shop', async ({ ack, body, client }) => {
   try {
     await ack();
     
-    // Check if body and user exist
-    if (!body || !body.user || !body.user.id) {
-      console.error('⚠️ Invalid body structure in /shop command:', body);
-      return;
-    }
-    
-    const triggerId = body.trigger_id;
-    const slackId = body.user.id;
-
+    const slackId = body.user_id;
     console.log('🛍️ /shop command triggered by user:', slackId);
 
     // Get user's current coin balance
     const currentCoins = await getUserCoins(slackId);
     console.log('💰 User coin balance:', currentCoins);
 
-    console.log('📋 Attempting to open shop modal...');
-    await client.views.open({
-      trigger_id: triggerId,
-      view: {
-        type: 'modal',
-        callback_id: 'shop_modal',
-        private_metadata: JSON.stringify({ slackId, currentCoins }),
-        title: { type: 'plain_text', text: 'Zorp Shop' },
-        submit: { type: 'plain_text', text: 'Buy Stickersheet' },
-        close: { type: 'plain_text', text: 'Cancel' },
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `*Welcome to the Zorp Shop!* 🛍️\n\nYou currently have *${currentCoins} coins* in your balance.`
-            }
-          },
-          {
-            type: 'divider'
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*Available Items:*\n\n🎨 Stickersheet - 10 coins\n*Get a cool stickersheet for your collection!*'
-            }
-          },
-          {
-            type: 'divider'
-          },
-          {
-            type: 'context',
-            elements: [
-              {
-                type: 'mrkdwn',
-                text: currentCoins >= 10 
-                  ? '✅ You have enough coins to buy a stickersheet!'
-                  : '❌ You need 10 coins to buy a stickersheet. Keep collecting!'
-              }
-            ]
-          }
-        ]
-      }
+    // Check if user has enough coins
+    if (currentCoins < 10) {
+      await client.chat.postMessage({
+        channel: slackId,
+        text: `❌ Sorry! You only have ${currentCoins} coins. You need 10 coins to buy a stickersheet. Keep collecting with \`/collect\`!`
+      });
+      return;
+    }
+
+    // Process the purchase
+    await Promise.all([
+      deductCoins(slackId, 10),
+      addStickersheet(slackId)
+    ]);
+
+    // Get updated balance
+    const newBalance = await getUserCoins(slackId);
+    const newStickersheets = await getUserStickersheets(slackId);
+
+    const purchaseMessages = [
+      `🎉 Purchase successful! You now have ${newBalance} coins and ${newStickersheets} stickersheets!`,
+      `✨ Yay! Stickersheet acquired! Your balance: ${newBalance} coins, Stickersheets: ${newStickersheets}`,
+      `🚀 Woo! You got a stickersheet! Coins remaining: ${newBalance}, Total stickersheets: ${newStickersheets}`,
+      `🌟 Amazing! Stickersheet purchased! You have ${newBalance} coins left and ${newStickersheets} stickersheets now!`
+    ];
+
+    const randomMessage = purchaseMessages[Math.floor(Math.random() * purchaseMessages.length)];
+
+    await client.chat.postMessage({
+      channel: slackId,
+      text: randomMessage
     });
-    console.log('✅ Shop modal opened successfully');
+
+    console.log('✅ Purchase completed successfully');
+
   } catch (error) {
     console.error('⚠️ Error in /shop command:', error);
-    console.error('⚠️ Error details:', JSON.stringify(error, null, 2));
     
-    // Try to send error message to user if we have a valid slackId
-    if (body && body.user && body.user.id) {
-      try {
-        await client.chat.postMessage({
-          channel: body.user.id,
-          text: '❌ Sorry! There was an error opening the shop. Please try again or contact support.'
-        });
-      } catch (dmError) {
-        console.error('⚠️ Could not send error DM:', dmError);
-      }
+    try {
+      await client.chat.postMessage({
+        channel: body.user_id,
+        text: '❌ Sorry! There was an error processing your purchase. Please try again or contact support.'
+      });
+    } catch (dmError) {
+      console.error('⚠️ Could not send error DM:', dmError);
     }
   }
 });
@@ -517,7 +496,8 @@ async function getUserStickersheets(slackId) {
     }).firstPage();
 
     if (userRecords.length > 0) {
-      return userRecords[0].get('Stickersheets') || 0;
+      const stickersheets = userRecords[0].get('Stickersheets') || [];
+      return stickersheets.length;
     }
     return 0;
   } catch (error) {
