@@ -110,7 +110,15 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
     const slackId = body.user.id;
     const now = new Date().toISOString().split('T')[0];
 
-    const displayName = body.user.name;
+    let displayName = body.user.name;
+    try {
+      const userInfo = await client.users.info({
+        user: slackId
+      });
+      displayName = userInfo.user.profile.display_name || userInfo.user.profile.real_name || body.user.name;
+    } catch (userError) {
+      console.log('⚠️ Could not fetch user info, using fallback name:', body.user.name);
+    }
 
     const selectedAction = COIN_ACTIONS.find(a => a.value === action);
     const coinsGiven = selectedAction && selectedAction.coins ? selectedAction.coins : null;
