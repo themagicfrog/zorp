@@ -15,6 +15,86 @@ const app = new App({
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
 
+// Function to get or create user record
+async function getOrCreateUser(slackId, displayName) {
+  try {
+    // Try to find existing user
+    const existingUsers = await base('Users').select({
+      filterByFormula: `{Slack ID} = '${slackId}'`
+    }).firstPage();
+
+    if (existingUsers.length > 0) {
+      return existingUsers[0];
+    }
+
+    // Create new user if not found
+    const newUser = await base('Users').create([
+      {
+        fields: {
+          'Slack ID': slackId,
+          'Display Name': displayName,
+          'Coins': 0,
+          'Stickersheets': 0,
+          'Fulfilled': false
+        }
+      }
+    ]);
+
+    console.log(`✅ Created new user: ${displayName} (${slackId})`);
+    return newUser[0];
+  } catch (error) {
+    console.error('⚠️ Error in getOrCreateUser:', error);
+    throw error;
+  }
+}
+
+// Function to update user's coin total
+async function updateUserCoins(slackId) {
+  try {
+    // Get all approved coin requests for this user
+    const approvedRequests = await base('Coin Requests').select({
+      filterByFormula: `AND({Slack ID} = '${slackId}', {Status} = 'Approved')`
+    }).all();
+
+    // Calculate total coins
+    let totalCoins = 0;
+    approvedRequests.forEach(record => {
+      const coins = record.get('Coins Given');
+      if (coins && typeof coins === 'number') {
+        totalCoins += coins;
+      }
+    });
+
+    // Update user record
+    const userRecords = await base('Users').select({
+      filterByFormula: `{Slack ID} = '${slackId}'`
+    }).firstPage();
+
+    if (userRecords.length > 0) {
+      await base('Users').update([
+        {
+          id: userRecords[0].id,
+          fields: {
+            'Coins': totalCoins
+          }
+        }
+      ]);
+      console.log(`✅ Updated coins for user ${slackId}: ${totalCoins} coins`);
+    }
+  } catch (error) {
+    console.error('⚠️ Error updating user coins:', error);
+  }
+}
+
+// Function to sync user when coin request is created
+async function syncUserOnRequest(slackId, displayName) {
+  try {
+    await getOrCreateUser(slackId, displayName);
+  } catch (error) {
+    console.error('⚠️ Error syncing user on request:', error);
+  }
+}
+
 const COIN_ACTIONS = [
   { label: 'Comment something meaningful on another game', value: 'Comment', coins: 1 },
   { label: 'Work in a huddle on your game', value: 'Huddle', coins: 2 },
@@ -150,7 +230,8 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
       client.chat.postMessage({
         channel: slackId,
         text: randomMessage
-      })
+      }),
+      syncUserOnRequest(slackId, displayName)
     ]);
 
   } catch (error) {
@@ -162,6 +243,65 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
       });
     } catch (dmError) {
     }
+  }
+});
+
+// Command to manually sync all users and update their coin totals
+app.command('/sync-users', async ({ ack, body, client }) => {
+  try {
+    await ack();
+    
+    // Only allow specific users to run this command (you can modify this)
+    if (body.user_id !== 'U06UYA4AH6F') { // Replace with your Slack ID
+      await client.chat.postMessage({
+        channel: body.user_id,
+        text: 'Sorry, only authorized users can run this command.'
+      });
+      return;
+    }
+
+    await client.chat.postMessage({
+      channel: body.user_id,
+      text: '🔄 Starting user sync... This may take a moment.'
+    });
+
+    // Get all unique users from coin requests
+    const allRequests = await base('Coin Requests').select().all();
+    const uniqueUsers = new Map();
+
+    allRequests.forEach(record => {
+      const slackId = record.get('Slack ID');
+      const displayName = record.get('Display Name');
+      if (slackId && displayName) {
+        uniqueUsers.set(slackId, displayName);
+      }
+    });
+
+    let createdCount = 0;
+    let updatedCount = 0;
+
+    // Process each unique user
+    for (const [slackId, displayName] of uniqueUsers) {
+      try {
+        await getOrCreateUser(slackId, displayName);
+        await updateUserCoins(slackId);
+        createdCount++;
+      } catch (error) {
+        console.error(`Error processing user ${slackId}:`, error);
+      }
+    }
+
+    await client.chat.postMessage({
+      channel: body.user_id,
+      text: `✅ User sync complete! Processed ${uniqueUsers.size} users.`
+    });
+
+  } catch (error) {
+    console.error('⚠️ Error in /sync-users command:', error);
+    await client.chat.postMessage({
+      channel: body.user_id,
+      text: '❌ Error during user sync. Check logs for details.'
+    });
   }
 });
 
