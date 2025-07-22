@@ -56,7 +56,15 @@ app.command('/collect', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'plain_text',
-              text: "beep beep boop boop! Zorp is here to help you collect coins!",
+              text: (() => {
+                const welcomeMessages = [
+                  "beep beep boop! i am Zorp and i am here to help you collect coins!",
+                  "hello earthling! do you hear the cows mooing? that means its coin time!",
+                  "greetings human (or whatever they say), are you ready to collect some coins?",
+                  "welcome to the coin collection station! zorppy is here",
+                ];
+                return welcomeMessages[Math.floor(Math.random() * welcomeMessages.length)];
+              })(),
               emoji: true
             }
           },
@@ -82,7 +90,7 @@ app.command('/collect', async ({ ack, body, client }) => {
               action_id: 'thread_link_input',
               placeholder: {
                 type: 'plain_text',
-                text: 'Paste the link to your thread or post here...'
+                text: 'paste the link to your thread or post here...'
               }
             },
             optional: true
@@ -102,8 +110,18 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
     const action = view.state.values['action_block']['action_selected'].selected_option.value;
     const threadLink = view.state.values['thread_link_block']['thread_link_input'].value || '';
     const slackId = body.user.id;
-    const displayName = body.user.name;
     const now = new Date().toISOString().split('T')[0];
+
+    // Get user info to get proper display name
+    let displayName = body.user.name;
+    try {
+      const userInfo = await client.users.info({
+        user: slackId
+      });
+      displayName = userInfo.user.profile.display_name || userInfo.user.profile.real_name || body.user.name;
+    } catch (userError) {
+      console.log('⚠️ Could not fetch user info, using fallback name:', body.user.name);
+    }
 
     // Find the selected action to get the coin value
     const selectedAction = COIN_ACTIONS.find(a => a.value === action);
@@ -136,9 +154,19 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
 
     console.log('✅ Airtable record created successfully');
 
+    // Random confirmation messages
+    const confirmationMessages = [
+      `hiya zorppy's spaceship has gotten your ${action} request`,
+      `wahoo! my alien friends got your ${action} submission. we'll be scanning it soon`,
+      `beep beep boop! the cows are mooing (aka we got your ${action} request)`,
+      `your ${action} request is now at our UFO. you'll get your coins soon`,
+    ];
+
+    const randomMessage = confirmationMessages[Math.floor(Math.random() * confirmationMessages.length)];
+
     await client.chat.postMessage({
       channel: slackId,
-      text: `hi! your ${action} request has been submitted yay`
+      text: randomMessage
     });
 
     console.log('✅ DM sent successfully');
