@@ -160,36 +160,44 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
 // ------------------ BACKGROUND COIN GRANTER ------------------
 
 async function processApprovedRequests() {
-  const approved = await base('Coin Requests').select({
-    filterByFormula: `AND({Status} = 'Approved', NOT({Fulfilled?}))`,
-    maxRecords: 10
-  }).firstPage();
-
-  for (const request of approved) {
-    const slackId = request.fields['Slack ID'];
-    const coinsToAdd = request.fields['Coins Given'] || 0;
-
-    const userRecords = await base('Users').select({
-      filterByFormula: `{Slack ID} = '${slackId}'`
+  try {
+    const approved = await base('Coin Requests').select({
+      filterByFormula: `AND({Status} = 'Approved', NOT({Fulfilled?}))`,
+      maxRecords: 10
     }).firstPage();
 
-    const user = userRecords[0];
-    if (!user) continue;
+    for (const request of approved) {
+      try {
+        const slackId = request.fields['Slack ID'];
+        const coinsToAdd = request.fields['Coins Given'] || 0;
 
-    const currentCoins = user.fields['Coins'] || 0;
-    await base('Users').update(user.id, {
-      'Coins': currentCoins + coinsToAdd
-    });
+        const userRecords = await base('Users').select({
+          filterByFormula: `{Slack ID} = '${slackId}'`
+        }).firstPage();
 
-    await base('Coin Requests').update(request.id, {
-      'Fulfilled?': true
-    });
+        const user = userRecords[0];
+        if (!user) continue;
 
-    await app.client.chat.postMessage({
-      token: process.env.SLACK_BOT_TOKEN,
-      channel: slackId,
-      text: `🎉 Your request was approved! You earned *${coinsToAdd}* coins.`
-    });
+        const currentCoins = user.fields['Coins'] || 0;
+        await base('Users').update(user.id, {
+          'Coins': currentCoins + coinsToAdd
+        });
+
+        await base('Coin Requests').update(request.id, {
+          'Fulfilled?': true
+        });
+
+        await app.client.chat.postMessage({
+          token: process.env.SLACK_BOT_TOKEN,
+          channel: slackId,
+          text: `🎉 Your request was approved! You earned *${coinsToAdd}* coins.`
+        });
+      } catch (innerErr) {
+        console.error('Error processing single approved request:', innerErr);
+      }
+    }
+  } catch (err) {
+    console.error('Error in processApprovedRequests:', err);
   }
 }
 
