@@ -378,9 +378,13 @@ app.command('/shop', async ({ ack, body, client }) => {
     const triggerId = body.trigger_id;
     const slackId = body.user.id;
 
+    console.log('🛍️ /shop command triggered by user:', slackId);
+
     // Get user's current coin balance
     const currentCoins = await getUserCoins(slackId);
+    console.log('💰 User coin balance:', currentCoins);
 
+    console.log('📋 Attempting to open shop modal...');
     await client.views.open({
       trigger_id: triggerId,
       view: {
@@ -425,8 +429,20 @@ app.command('/shop', async ({ ack, body, client }) => {
         ]
       }
     });
+    console.log('✅ Shop modal opened successfully');
   } catch (error) {
-    console.error('⚠️ Error in /shop command:', JSON.stringify(error, null, 2));
+    console.error('⚠️ Error in /shop command:', error);
+    console.error('⚠️ Error details:', JSON.stringify(error, null, 2));
+    
+    // Try to send error message to user
+    try {
+      await client.chat.postMessage({
+        channel: slackId,
+        text: '❌ Sorry! There was an error opening the shop. Please try again or contact support.'
+      });
+    } catch (dmError) {
+      console.error('⚠️ Could not send error DM:', dmError);
+    }
   }
 });
 
