@@ -1,12 +1,18 @@
 // app.js
-const { App } = require('@slack/bolt');
+const { App, ExpressReceiver } = require('@slack/bolt');
 const Airtable = require('airtable');
 require('dotenv').config();
 
-// Initialize Slack app
+// Create a custom receiver to handle /slack/events
+const receiver = new ExpressReceiver({
+  signingSecret: process.env.SLACK_SIGNING_SECRET,
+  endpoints: '/slack/events'
+});
+
+// Initialize Slack app with custom receiver
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
-  signingSecret: process.env.SLACK_SIGNING_SECRET
+  receiver
 });
 
 // Airtable setup
@@ -205,8 +211,7 @@ setInterval(processApprovedRequests, 60 * 1000); // every 60 seconds
 
 // ------------------ START ------------------
 
-(async () => {
-  const port = process.env.PORT || 3000;
-  await app.start(port);
-  console.log(`⚡️ Bolt app is running on port ${port}`);
-})();
+const port = process.env.PORT || 3000;
+receiver.app.listen(port, () => {
+  console.log(`⚡️ Slack Bolt app is running on port ${port}`);
+});
