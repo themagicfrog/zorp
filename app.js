@@ -189,7 +189,7 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
 async function processApprovedRequests() {
   try {
     const approved = await base('Coin Requests').select({
-      filterByFormula: `AND({Status} = 'Approved', NOT({Fulfilled?}))`,
+      filterByFormula: `{Status} = 'Approved'`,
       maxRecords: 10
     }).firstPage();
 
@@ -211,7 +211,7 @@ async function processApprovedRequests() {
         });
 
         await base('Coin Requests').update(request.id, {
-          'Fulfilled?': true
+          'Status': 'Fulfilled'
         });
 
         await app.client.chat.postMessage({
