@@ -119,3 +119,9 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
     console.error('⚠️ Error in collect_modal view:', JSON.stringify(error, null, 2));
   }
 });
+
+// Start the server
+const port = process.env.PORT || 3000;
+receiver.app.listen(port, () => {
+  console.log(`🚀 Slack Bolt app running on port ${port}`);
+});
