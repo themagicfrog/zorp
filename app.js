@@ -375,6 +375,13 @@ async function deductCoins(slackId, amount) {
 app.command('/shop', async ({ ack, body, client }) => {
   try {
     await ack();
+    
+    // Check if body and user exist
+    if (!body || !body.user || !body.user.id) {
+      console.error('⚠️ Invalid body structure in /shop command:', body);
+      return;
+    }
+    
     const triggerId = body.trigger_id;
     const slackId = body.user.id;
 
@@ -434,14 +441,16 @@ app.command('/shop', async ({ ack, body, client }) => {
     console.error('⚠️ Error in /shop command:', error);
     console.error('⚠️ Error details:', JSON.stringify(error, null, 2));
     
-    // Try to send error message to user
-    try {
-      await client.chat.postMessage({
-        channel: slackId,
-        text: '❌ Sorry! There was an error opening the shop. Please try again or contact support.'
-      });
-    } catch (dmError) {
-      console.error('⚠️ Could not send error DM:', dmError);
+    // Try to send error message to user if we have a valid slackId
+    if (body && body.user && body.user.id) {
+      try {
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: '❌ Sorry! There was an error opening the shop. Please try again or contact support.'
+        });
+      } catch (dmError) {
+        console.error('⚠️ Could not send error DM:', dmError);
+      }
     }
   }
 });
