@@ -645,6 +645,19 @@ app.command('/leaderboard', async ({ ack, body, client }) => {
   }
 });
 
+// add health check endpoints to keep the app awake
+receiver.app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+receiver.app.get('/ping', (req, res) => {
+  res.status(200).send('pong');
+});
+
 // start the server on the specified port
 const port = process.env.PORT || 3000;
 receiver.app.listen(port, () => {
