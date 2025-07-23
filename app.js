@@ -64,12 +64,18 @@ async function getOrCreateUser(slackId, displayName) {
       return existingUser;
     }
 
+    // get any existing coin requests for this user
+    const existingRequests = await base('Coin Requests').select({
+      filterByFormula: `{Slack ID} = '${slackId}'`
+    }).all();
+
     const newUser = await base('Users').create([
       {
         fields: {
           'Slack ID': slackId,
           'Display Name': displayName,
-          'Coins': 0
+          'Coins': 0,
+          'Coin Requests': existingRequests.map(record => record.id)
         }
       }
     ]);
@@ -77,6 +83,29 @@ async function getOrCreateUser(slackId, displayName) {
     return newUser[0];
   } catch (error) {
     throw error;
+  }
+}
+
+// update the linked coin requests for a user
+async function updateUserLinkedRequests(slackId) {
+  try {
+    const userRecord = await getUserRecord(slackId);
+    if (!userRecord) return;
+
+    // get all coin requests for this user
+    const requests = await base('Coin Requests').select({
+      filterByFormula: `{Slack ID} = '${slackId}'`
+    }).all();
+
+    // update the user's linked requests
+    await base('Users').update([
+      {
+        id: userRecord.id,
+        fields: { 'Coin Requests': requests.map(record => record.id) }
+      }
+    ]);
+  } catch (error) {
+    // silently handle errors
   }
 }
 
@@ -193,6 +222,28 @@ async function getUserStickersheets(slackId) {
     return stickersheets.length;
   } catch (error) {
     return 0;
+  }
+}
+
+// get all coin requests for a user
+async function getUserCoinRequests(slackId) {
+  try {
+    const requests = await base('Coin Requests').select({
+      filterByFormula: `{Slack ID} = '${slackId}'`,
+      sort: [{ field: 'Request Date', direction: 'desc' }]
+    }).all();
+    
+    return requests.map(record => ({
+      id: record.id,
+      action: record.get('Action'),
+      status: record.get('Status'),
+      coinsGiven: record.get('Coins Given'),
+      messageLink: record.get('Message Link'),
+      requestDate: record.get('Request Date'),
+      requestNote: record.get('Request Note')
+    }));
+  } catch (error) {
+    return [];
   }
 }
 
@@ -322,14 +373,15 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
       `your request is now at our UFO! you'll get your coins soon (as long as you're not a devious minion)`,
     ];
 
-    // save the request to airtable, send confirmation dm, and create user if needed
+    // save the request to airtable, send confirmation dm, create user if needed, and update linked requests
     await Promise.all([
       base('Coin Requests').create([{ fields }]),
       client.chat.postMessage({
         channel: slackId,
         text: getRandomMessage(confirmationMessages)
       }),
-      getOrCreateUser(slackId, displayName)
+      getOrCreateUser(slackId, displayName),
+      updateUserLinkedRequests(slackId)
     ]);
 
   } catch (error) {
@@ -639,6 +691,120 @@ app.command('/leaderboard', async ({ ack, body, client }) => {
       await client.chat.postMessage({
         channel: body.user_id,
         text: 'sorry! zorp couldn\'t load the leaderboard, pls ask @magic frog for help'
+      });
+    } catch (dmError) {
+    }
+  }
+});
+
+// handle the /requests command - shows a user's coin requests
+app.command('/requests', async ({ ack, body, client }) => {
+  try {
+    await ack();
+    
+    const slackId = body.user_id;
+
+    // get user's coin requests
+    const userCoinRequests = await getUserCoinRequests(slackId);
+
+    if (userCoinRequests.length === 0) {
+      await client.chat.postMessage({
+        channel: slackId,
+        text: 'you haven\'t submitted any coin requests yet! use \`/collect\` to start earning coins!'
+      });
+      return;
+    }
+
+    let requestsText = `*YOUR COIN REQUESTS*\n\n`;
+    userCoinRequests.forEach(request => {
+      requestsText += `*${request.action}* (Status: ${request.status}, Coins: ${request.coinsGiven || 'N/A'}, Date: ${request.requestDate})\n`;
+      if (request.messageLink) {
+        requestsText += `Message Link: ${request.messageLink}\n`;
+      }
+      if (request.requestNote) {
+        requestsText += `Request Note: ${request.requestNote}\n`;
+      }
+      requestsText += `-------------------------\n`;
+    });
+
+    await client.chat.postMessage({
+      channel: slackId,
+      text: requestsText
+    });
+
+  } catch (error) {
+    // send error message if requests fails to load
+    try {
+      await client.chat.postMessage({
+        channel: body.user_id,
+        text: 'sorry! zorp couldn\'t load your requests, pls ask @magic frog for help'
+      });
+    } catch (dmError) {
+    }
+  }
+});
+
+// handle the /admin-requests command - shows all users with their linked requests (admin only)
+app.command('/admin-requests', async ({ ack, body, client }) => {
+  try {
+    await ack();
+    
+    const slackId = body.user_id;
+
+    // check if user is admin (you can customize this check)
+    const adminUsers = ['magic frog']; // add admin usernames here
+    const userInfo = await client.users.info({ user: slackId });
+    const displayName = userInfo.user.profile.display_name || userInfo.user.profile.real_name || body.user.name;
+    
+    if (!adminUsers.includes(displayName)) {
+      await client.chat.postMessage({
+        channel: slackId,
+        text: 'sorry! this command is only for admins'
+      });
+      return;
+    }
+
+    // get all users with their linked requests
+    const allUsers = await base('Users').select({
+      fields: ['Display Name', 'Slack ID', 'Coins', 'Coin Requests']
+    }).all();
+
+    let adminText = `*ALL USERS WITH LINKED REQUESTS*\n\n`;
+    
+    for (const user of allUsers) {
+      const userName = user.get('Display Name') || 'Unknown';
+      const userCoins = user.get('Coins') || 0;
+      const linkedRequests = user.get('Coin Requests') || [];
+      
+      adminText += `*${userName}* (${userCoins} coins, ${linkedRequests.length} requests)\n`;
+      
+      if (linkedRequests.length > 0) {
+        // get details of linked requests
+        const requestDetails = await base('Coin Requests').select({
+          filterByFormula: `RECORD_ID() = '${linkedRequests.join("' OR RECORD_ID() = '")}'`
+        }).all();
+        
+        requestDetails.forEach(request => {
+          const action = request.get('Action');
+          const status = request.get('Status');
+          const coins = request.get('Coins Given') || 'N/A';
+          adminText += `  - ${action} (${status}, ${coins} coins)\n`;
+        });
+      }
+      adminText += `\n`;
+    }
+
+    await client.chat.postMessage({
+      channel: slackId,
+      text: adminText
+    });
+
+  } catch (error) {
+    // send error message if admin requests fails to load
+    try {
+      await client.chat.postMessage({
+        channel: body.user_id,
+        text: 'sorry! zorp couldn\'t load admin requests, pls check the logs'
       });
     } catch (dmError) {
     }
