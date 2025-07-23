@@ -406,6 +406,45 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'divider'
           },
           {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*stickersheet 1 - 10 coins*\nstarter stickersheet'
+            },
+            accessory: {
+              type: 'image',
+              image_url: 'https://hc-cdn.hel1.your-objectstorage.com/s/v3/85a6f8e64fdf613039bbaf6b54dfbcaf2e41fabd_screenshot_2025-07-22_at_8.16.00___pm.png',
+              alt_text: 'Stickersheet 1'
+            }
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*stickersheet 2 - 20 coins*\npremium stickersheet'
+            },
+            accessory: {
+              type: 'image',
+              image_url: 'https://hc-cdn.hel1.your-objectstorage.com/s/v3/ab4f895a99881636649ac7b3e6d8e6ef26b1f86b_screenshot_2025-07-22_at_8.17.09___pm.png',
+              alt_text: 'Stickersheet 2'
+            }
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*stickersheet 3 - 30 coins*\nultimate stickersheet'
+            },
+            accessory: {
+              type: 'image',
+              image_url: 'https://hc-cdn.hel1.your-objectstorage.com/s/v3/3a63a621aaf53cae43848c745597d94f5305c848_screenshot_2025-07-22_at_8.18.27___pm.png',
+              alt_text: 'Stickersheet 3'
+            }
+          },
+          {
+            type: 'divider'
+          },
+          {
             type: 'input',
             block_id: 'stickersheet_selection',
             label: { type: 'plain_text', text: 'choose a stickersheet to purchase:' },
