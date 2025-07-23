@@ -1,27 +1,32 @@
+// import the slack bolt framework and airtable
 const { App, ExpressReceiver } = require('@slack/bolt');
 const Airtable = require('airtable');
 require('dotenv').config();
 
+// set up the express receiver to handle slack events
 const receiver = new ExpressReceiver({
   signingSecret: process.env.SLACK_SIGNING_SECRET,
   endpoints: '/slack/events'
 });
 
+// create the slack app instance
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
   receiver
 });
 
+// connect to airtable database
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
 
-// Constants
+// define all the stickersheet types and their requirements
 const STICKERSHEET_CONFIG = {
   stickersheet1: { name: 'PLANET STICKERSHEET', cost: 10, description: 'starter stickersheet' },
   stickersheet2: { name: 'GALAXY STICKERSHEET', cost: 20, description: 'premium stickersheet', requires: 'PLANET STICKERSHEET' },
   stickersheet3: { name: 'UNIVERSE STICKERSHEET', cost: 30, description: 'ultimate stickersheet', requires: 'GALAXY STICKERSHEET' }
 };
 
+// define all the activities users can do to earn coins
 const COIN_ACTIONS = [
   { label: 'Comment something meaningful on another game', value: 'Comment', coins: 1 },
   { label: 'Work in a huddle on your game', value: 'Huddle', coins: 2 },
@@ -38,7 +43,7 @@ const COIN_ACTIONS = [
   { label: 'Meetup w/ a Jumpstarter IRL', value: 'IRL Meetup', coins: 30 }
 ];
 
-// Helper function to get user record
+// helper function to get a user's record from airtable
 async function getUserRecord(slackId) {
   const userRecords = await base('Users').select({
     filterByFormula: `{Slack ID} = '${slackId}'`
@@ -46,11 +51,12 @@ async function getUserRecord(slackId) {
   return userRecords.length > 0 ? userRecords[0] : null;
 }
 
-// Helper function to get stickersheet config
+// helper function to get stickersheet info by type
 function getStickersheetConfig(stickersheetType) {
   return STICKERSHEET_CONFIG[stickersheetType] || null;
 }
 
+// create a new user in airtable if they don't exist
 async function getOrCreateUser(slackId, displayName) {
   try {
     const existingUser = await getUserRecord(slackId);
@@ -68,20 +74,21 @@ async function getOrCreateUser(slackId, displayName) {
       }
     ]);
 
-    console.log(`✅ Created new user: ${displayName} (${slackId})`);
     return newUser[0];
   } catch (error) {
-    console.error('⚠️ Error in getOrCreateUser:', error);
     throw error;
   }
 }
 
+// update a user's coin total based on their approved requests
 async function updateUserCoins(slackId) {
   try {
+    // get all approved coin requests for this user
     const approvedRequests = await base('Coin Requests').select({
       filterByFormula: `AND({Slack ID} = '${slackId}', {Status} = 'Approved')`
     }).all();
 
+    // add up all the coins from approved requests
     let totalCoins = 0;
     approvedRequests.forEach(record => {
       const coins = record.get('Coins Given');
@@ -90,6 +97,7 @@ async function updateUserCoins(slackId) {
       }
     });
 
+    // update the user's coin total in airtable
     const userRecord = await getUserRecord(slackId);
     if (userRecord) {
       await base('Users').update([
@@ -98,23 +106,22 @@ async function updateUserCoins(slackId) {
           fields: { 'Coins': totalCoins }
         }
       ]);
-      console.log(`✅ Updated coins for user ${slackId}: ${totalCoins} coins`);
     }
   } catch (error) {
-    console.error('⚠️ Error updating user coins:', error);
   }
 }
 
+// get how many coins a user currently has
 async function getUserCoins(slackId) {
   try {
     const userRecord = await getUserRecord(slackId);
     return userRecord ? (userRecord.get('Coins') || 0) : 0;
   } catch (error) {
-    console.error('⚠️ Error getting user coins:', error);
     return 0;
   }
 }
 
+// add a stickersheet to a user's collection
 async function addStickersheet(slackId, stickersheetType) {
   try {
     const userRecord = await getUserRecord(slackId);
@@ -123,9 +130,11 @@ async function addStickersheet(slackId, stickersheetType) {
     const config = getStickersheetConfig(stickersheetType);
     if (!config) throw new Error(`Invalid stickersheet type: ${stickersheetType}`);
 
+    // get current stickersheets and add the new one
     const currentStickersheets = userRecord.get('Stickersheets') || [];
     const newStickersheets = [...currentStickersheets, config.name];
 
+    // update the user's stickersheet list in airtable
     await base('Users').update([
       {
         id: userRecord.id,
@@ -133,14 +142,13 @@ async function addStickersheet(slackId, stickersheetType) {
       }
     ]);
 
-    console.log(`✅ Added ${config.name} for user ${slackId}: ${newStickersheets.length} total`);
     return newStickersheets.length;
   } catch (error) {
-    console.error('⚠️ Error adding stickersheet:', error);
     throw error;
   }
 }
 
+// take coins away from a user when they buy something
 async function deductCoins(slackId, amount) {
   try {
     const userRecord = await getUserRecord(slackId);
@@ -149,10 +157,12 @@ async function deductCoins(slackId, amount) {
     const currentCoins = userRecord.get('Coins') || 0;
     const newCoins = currentCoins - amount;
 
+    // make sure they don't go negative
     if (newCoins < 0) {
       throw new Error('Insufficient coins');
     }
 
+    // update their coin balance in airtable
     await base('Users').update([
       {
         id: userRecord.id,
@@ -160,44 +170,44 @@ async function deductCoins(slackId, amount) {
       }
     ]);
 
-    console.log(`✅ Deducted ${amount} coins from user ${slackId}: ${newCoins} remaining`);
     return newCoins;
   } catch (error) {
-    console.error('⚠️ Error deducting coins:', error);
     throw error;
   }
 }
 
+// get the list of stickersheets a user owns
 async function getUserStickersheetsList(slackId) {
   try {
     const userRecord = await getUserRecord(slackId);
     return userRecord ? (userRecord.get('Stickersheets') || []) : [];
   } catch (error) {
-    console.error('⚠️ Error getting user stickersheets list:', error);
     return [];
   }
 }
 
+// get how many stickersheets a user owns
 async function getUserStickersheets(slackId) {
   try {
     const stickersheets = await getUserStickersheetsList(slackId);
     return stickersheets.length;
   } catch (error) {
-    console.error('⚠️ Error getting user stickersheets:', error);
     return 0;
   }
 }
 
-// Helper function to get random message from array
+// helper function to pick a random message from a list
 function getRandomMessage(messages) {
   return messages[Math.floor(Math.random() * messages.length)];
 }
 
+// handle the /collect command - opens a form for users to submit coin requests
 app.command('/collect', async ({ ack, body, client }) => {
   try {
     await ack();
     const triggerId = body.trigger_id;
 
+    // list of random welcome messages
     const welcomeMessages = [
       "beep beep boop! i am Zorp and i am here to help you collect coins!",
       "hello earthling! do you hear the cows mooing? that means it's coin time!",
@@ -205,6 +215,7 @@ app.command('/collect', async ({ ack, body, client }) => {
       "welcome to the coin collection station! zorppy is here",
     ];
 
+    // open a form for the user to fill out
     await client.views.open({
       trigger_id: triggerId,
       view: {
@@ -261,31 +272,35 @@ app.command('/collect', async ({ ack, body, client }) => {
       }
     });
   } catch (error) {
-    console.error('Error in /collect command:', JSON.stringify(error, null, 2));
   }
 });
 
+// handle when user submits the collect form
 app.view('collect_modal', async ({ ack, view, body, client }) => {
   try {
     await ack();
 
+    // get the data from the form
     const action = view.state.values['action_block']['action_selected'].selected_option.value;
     const threadLink = view.state.values['thread_link_block']['thread_link_input'].value || '';
     const requestNote = view.state.values['request_note_block']['request_note_input'].value || '';
     const slackId = body.user.id;
     const now = new Date().toISOString().split('T')[0];
 
+    // try to get the user's display name from slack
     let displayName = body.user.name;
     try {
       const userInfo = await client.users.info({ user: slackId });
       displayName = userInfo.user.profile.display_name || userInfo.user.profile.real_name || body.user.name;
     } catch (userError) {
-      console.log('⚠️ Could not fetch user info, using fallback name:', body.user.name);
+      // use fallback name if we can't get their display name
     }
 
+    // figure out how many coins this action is worth
     const selectedAction = COIN_ACTIONS.find(a => a.value === action);
     const coinsGiven = selectedAction?.coins || null;
 
+    // prepare the data to save to airtable
     const fields = {
       'Slack ID': slackId,
       'Display Name': displayName,
@@ -295,9 +310,11 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
       'Request Date': now
     };
 
+    // add optional fields if they exist
     if (requestNote) fields['Request Note'] = requestNote;
     if (coinsGiven !== null) fields['Coins Given'] = coinsGiven;
 
+    // list of random confirmation messages
     const confirmationMessages = [
       `hiya! my spaceship has gotten your request :D the minions will look at it soon`,
       `wahoo! my alien friends got your submission. we'll be scanning it soon :)`,
@@ -305,6 +322,7 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
       `your request is now at our UFO! you'll get your coins soon (as long as you're not a devious minion)`,
     ];
 
+    // save the request to airtable, send confirmation dm, and create user if needed
     await Promise.all([
       base('Coin Requests').create([{ fields }]),
       client.chat.postMessage({
@@ -315,30 +333,30 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
     ]);
 
   } catch (error) {
+    // send error message to user if something goes wrong
     try {
       await client.chat.postMessage({
         channel: body.user.id,
         text: `oopsies! zorp couldn't submit your request, pls ask @magic frog for help`
       });
     } catch (dmError) {
-      console.error('⚠️ Could not send error DM:', dmError);
     }
   }
 });
 
+// handle the /shop command - opens the shop where users can buy stickersheets
 app.command('/shop', async ({ ack, body, client }) => {
   try {
     await ack();
     
     const slackId = body.user_id;
     const triggerId = body.trigger_id;
-    console.log('🛍️ /shop command triggered by user:', slackId);
 
+    // get user's current coins and stickersheets
     const currentCoins = await getUserCoins(slackId);
     const currentStickersheets = await getUserStickersheetsList(slackId);
-    console.log('💰 User coin balance:', currentCoins);
-    console.log('🎨 User stickersheets:', currentStickersheets);
 
+    // check what stickersheets they can buy based on progression
     const hasPlanet = currentStickersheets.includes('PLANET STICKERSHEET');
     const hasGalaxy = currentStickersheets.includes('GALAXY STICKERSHEET');
     
@@ -346,11 +364,13 @@ app.command('/shop', async ({ ack, body, client }) => {
     const canBuyGalaxy = hasPlanet && currentCoins >= 20;
     const canBuyUniverse = hasGalaxy && currentCoins >= 30;
 
+    // create the dropdown options for stickersheets
     const stickersheetOptions = Object.entries(STICKERSHEET_CONFIG).map(([key, config]) => {
       let canBuy = false;
       let text = `${config.name} - ${config.cost} coins`;
       let description = config.description;
 
+      // customize the text and description based on what they can buy
       switch (key) {
         case 'stickersheet1':
           canBuy = canBuyPlanet;
@@ -359,14 +379,12 @@ app.command('/shop', async ({ ack, body, client }) => {
         case 'stickersheet2':
           canBuy = canBuyGalaxy;
           if (!canBuy) {
-            text += ' (need PLANET)';
             description = 'need PLANET stickersheet + 20 coins';
           }
           break;
         case 'stickersheet3':
           canBuy = canBuyUniverse;
           if (!canBuy) {
-            text += ' (need GALAXY)';
             description = 'need GALAXY stickersheet + 30 coins';
           }
           break;
@@ -379,6 +397,7 @@ app.command('/shop', async ({ ack, body, client }) => {
       };
     });
 
+    // open the shop modal
     await client.views.open({
       trigger_id: triggerId,
       view: {
@@ -403,7 +422,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*PLANET STICKERSHEET - 10 coins*\nstarter stickersheet'
+              text: '*PLANET STICKERSHEET - 10 coins*'
             },
             accessory: {
               type: 'image',
@@ -415,7 +434,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*GALAXY STICKERSHEET - 20 coins*\npremium stickersheet'
+              text: '*GALAXY STICKERSHEET - 20 coins & PLANET*'
             },
             accessory: {
               type: 'image',
@@ -427,7 +446,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*UNIVERSE STICKERSHEET - 30 coins*\nultimate stickersheet'
+              text: '*UNIVERSE STICKERSHEET - 30 coins & GALAXY*'
             },
             accessory: {
               type: 'image',
@@ -468,29 +487,30 @@ app.command('/shop', async ({ ack, body, client }) => {
     });
 
   } catch (error) {
-    console.error('⚠️ Error in /shop command:', error);
-    
+    // send error message if shop can't open
     try {
       await client.chat.postMessage({
         channel: body.user_id,
         text: 'oopies! zorp couldn\'t open the shop, pls ask @magic frog for help'
       });
     } catch (dmError) {
-      console.error('⚠️ Could not send error DM:', dmError);
     }
   }
 });
 
+// handle when user submits the shop form to buy a stickersheet
 app.view('shop_modal', async ({ ack, view, body, client }) => {
   try {
     await ack();
 
+    // get the selected stickersheet and user info
     const metadata = JSON.parse(view.private_metadata);
     const { slackId } = metadata;
     
     const selectedStickersheet = view.state.values['stickersheet_selection']['stickersheet_selected'].selected_option.value;
     const config = getStickersheetConfig(selectedStickersheet);
     
+    // make sure they selected a valid stickersheet
     if (!config) {
       await client.chat.postMessage({
         channel: slackId,
@@ -499,10 +519,11 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
       return;
     }
     
+    // get current user data
     const currentCoins = await getUserCoins(slackId);
     const currentStickersheets = await getUserStickersheetsList(slackId);
     
-    // Check progression requirements
+    // check if they have the required stickersheet for progression
     if (config.requires && !currentStickersheets.includes(config.requires)) {
       await client.chat.postMessage({
         channel: slackId,
@@ -511,7 +532,7 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
       return;
     }
     
-    // Check if already owned
+    // check if they already own this stickersheet
     if (currentStickersheets.includes(config.name)) {
       await client.chat.postMessage({
         channel: slackId,
@@ -520,7 +541,7 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
       return;
     }
     
-    // Check if enough coins
+    // check if they have enough coins
     if (currentCoins < config.cost) {
       await client.chat.postMessage({
         channel: slackId,
@@ -529,14 +550,17 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
       return;
     }
 
+    // process the purchase - deduct coins and add stickersheet
     await Promise.all([
       deductCoins(slackId, config.cost),
       addStickersheet(slackId, selectedStickersheet)
     ]);
 
+    // get updated user data for confirmation message
     const newBalance = await getUserCoins(slackId);
     const newStickersheets = await getUserStickersheets(slackId);
 
+    // list of random purchase confirmation messages
     const purchaseMessages = [
       `${config.name} acquired! you now have ${newBalance} coins and ${newStickersheets} stickersheets!`,
       `yay! ${config.name} purchased! your balance: ${newBalance} coins, stickersheets: ${newStickersheets}`,
@@ -544,46 +568,48 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
       `amazing! ${config.name} purchased! you have ${newBalance} coins left and ${newStickersheets} stickersheets now!`
     ];
 
+    // send confirmation message to user
     await client.chat.postMessage({
       channel: slackId,
       text: getRandomMessage(purchaseMessages)
     });
 
-    console.log(`✅ Purchase completed successfully: ${selectedStickersheet} for ${config.cost} coins`);
-
   } catch (error) {
-    console.error('⚠️ Error in shop_modal view:', error);
-    
+    // send error message if purchase fails
     try {
       await client.chat.postMessage({
         channel: body.user.id,
         text: 'sorry! zappy couldn\'t process your purchase, pls ask @magic frog for help'
       });
     } catch (dmError) {
-      console.error('⚠️ Could not send error DM:', dmError);
     }
   }
 });
 
+// handle the /leaderboard command - shows top users by coin count
 app.command('/leaderboard', async ({ ack, body, client }) => {
   try {
     await ack();
     
     const slackId = body.user_id;
-    console.log('🏆 /leaderboard command triggered by user:', slackId);
 
+    // get all users sorted by coins (highest first)
     const allUsers = await base('Users').select({
       sort: [{ field: 'Coins', direction: 'desc' }]
     }).all();
 
+    // find where the current user ranks
     const currentUserIndex = allUsers.findIndex(user => user.get('Slack ID') === slackId);
     const currentUserPosition = currentUserIndex + 1;
     const currentUserCoins = currentUserIndex >= 0 ? allUsers[currentUserIndex].get('Coins') || 0 : 0;
 
+    // get the top 5 users
     const top5Users = allUsers.slice(0, 5);
 
+    // build the leaderboard message
     let leaderboardText = '*COIN LEADERBOARD*\n\n';
     
+    // add each top user to the message
     top5Users.forEach((user, index) => {
       const position = index + 1;
       const displayName = user.get('Display Name') || 'Unknown';
@@ -592,6 +618,7 @@ app.command('/leaderboard', async ({ ack, body, client }) => {
       leaderboardText += `*${position}.* ${displayName} - *${coins} coins*\n`;
     });
 
+    // add the current user's position if they're not in top 5
     if (currentUserPosition > 5) {
       leaderboardText += `\n*your position:* #${currentUserPosition} with *${currentUserCoins} coins*`;
     } else if (currentUserPosition > 0) {
@@ -600,28 +627,25 @@ app.command('/leaderboard', async ({ ack, body, client }) => {
       leaderboardText += `\n*your position:* not ranked yet - start collecting coins with \`/collect\`!`;
     }
 
+    // send the leaderboard to the user
     await client.chat.postMessage({
       channel: slackId,
       text: leaderboardText
     });
 
-    console.log('✅ Leaderboard sent successfully');
-
   } catch (error) {
-    console.error('⚠️ Error in /leaderboard command:', error);
-    
+    // send error message if leaderboard fails to load
     try {
       await client.chat.postMessage({
         channel: body.user_id,
         text: 'sorry! zorp couldn\'t load the leaderboard, pls ask @magic frog for help'
       });
     } catch (dmError) {
-      console.error('⚠️ Could not send error DM:', dmError);
     }
   }
 });
 
+// start the server on the specified port
 const port = process.env.PORT || 3000;
 receiver.app.listen(port, () => {
-  console.log(`🚀 Slack Bolt app running on port ${port}`);
 });
