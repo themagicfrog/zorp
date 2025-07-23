@@ -88,16 +88,16 @@ async function syncUserOnRequest(slackId, displayName) {
 const COIN_ACTIONS = [
   { label: 'Comment something meaningful on another game', value: 'Comment', coins: 1 },
   { label: 'Work in a huddle on your game', value: 'Huddle', coins: 2 },
-  { label: 'Help someone fix a problem in their game', value: 'Fix Problem', coins: null },
+  { label: 'Help someone fix a problem in their game (write note)', value: 'Fix Problem', coins: null },
   { label: 'Post your game idea', value: 'Post', coins: 3 },
   { label: 'Attend an event', value: 'Attend Event', coins: 3 },
   { label: 'Post a progress update', value: 'Update', coins: 2 },
   { label: 'Tell a friend & post it somewhere (Reddit, Discord, etc.)', value: 'Share', coins: 5 },
-  { label: 'Host an event', value: 'Host Event', coins: null },
+  { label: 'Host an event (write note)', value: 'Host Event', coins: null },
   { label: 'Post a Jumpstart poster somewhere', value: 'Poster', coins: 10 },
   { label: 'Record game explanation and process (face+voice)', value: 'Record', coins: 10 },
   { label: 'Draw/make all assets', value: 'Create Assets', coins: 20 },
-  { label: 'Open PR & do a task', value: 'Task (PR)', coins: null },
+  { label: 'Open PR & do a task (write note)', value: 'Task (PR)', coins: null },
   { label: 'Meetup w/ a Jumpstarter IRL', value: 'IRL Meetup', coins: 30 }
 ];
 
@@ -162,6 +162,20 @@ app.command('/collect', async ({ ack, body, client }) => {
                 text: 'paste the link to your #jumpstart message with proof'
               }
             }
+          },
+          {
+            type: 'input',
+            block_id: 'request_note_block',
+            label: { type: 'plain_text', text: 'anything to add?' },
+            element: {
+              type: 'plain_text_input',
+              action_id: 'request_note_input',
+              placeholder: {
+                type: 'plain_text',
+                text: 'optional: add any additional context or notes...'
+              }
+            },
+            optional: true
           }
         ]
       }
@@ -177,6 +191,7 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
 
     const action = view.state.values['action_block']['action_selected'].selected_option.value;
     const threadLink = view.state.values['thread_link_block']['thread_link_input'].value || '';
+    const requestNote = view.state.values['request_note_block']['request_note_input'].value || '';
     const slackId = body.user.id;
     const now = new Date().toISOString().split('T')[0];
 
@@ -201,6 +216,10 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
       'Message Link': threadLink,
       'Request Date': now
     };
+
+    if (requestNote) {
+      fields['Request Note'] = requestNote;
+    }
 
     if (coinsGiven !== null) {
       fields['Coins Given'] = coinsGiven;
@@ -564,11 +583,15 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
     const newBalance = await getUserCoins(slackId);
     const newStickersheets = await getUserStickersheets(slackId);
 
+    const stickersheetDisplayName = selectedStickersheet === 'stickersheet1' ? 'PLANET STICKERSHEET' : 
+                                   selectedStickersheet === 'stickersheet2' ? 'GALAXY STICKERSHEET' : 
+                                   'UNIVERSE STICKERSHEET';
+
     const purchaseMessages = [
-      `${selectedStickersheet} acquired! you now have ${newBalance} coins and ${newStickersheets} stickersheets!`,
-      `yay! ${selectedStickersheet} purchased! your balance: ${newBalance} coins, stickersheets: ${newStickersheets}`,
-      `woo! you got ${selectedStickersheet}! coins remaining: ${newBalance}, total stickersheets: ${newStickersheets}`,
-      `amazing! ${selectedStickersheet} purchased! you have ${newBalance} coins left and ${newStickersheets} stickersheets now!`
+      `${stickersheetDisplayName} acquired! you now have ${newBalance} coins and ${newStickersheets} stickersheets!`,
+      `yay! ${stickersheetDisplayName} purchased! your balance: ${newBalance} coins, stickersheets: ${newStickersheets}`,
+      `woo! you got ${stickersheetDisplayName}! coins remaining: ${newBalance}, total stickersheets: ${newStickersheets}`,
+      `amazing! ${stickersheetDisplayName} purchased! you have ${newBalance} coins left and ${newStickersheets} stickersheets now!`
     ];
 
     const randomMessage = purchaseMessages[Math.floor(Math.random() * purchaseMessages.length)];
@@ -601,20 +624,16 @@ app.command('/leaderboard', async ({ ack, body, client }) => {
     const slackId = body.user_id;
     console.log('🏆 /leaderboard command triggered by user:', slackId);
 
-    // Get all users sorted by coins (descending)
     const allUsers = await base('Users').select({
       sort: [{ field: 'Coins', direction: 'desc' }]
     }).all();
 
-    // Find current user's position
     const currentUserIndex = allUsers.findIndex(user => user.get('Slack ID') === slackId);
-    const currentUserPosition = currentUserIndex + 1; // 1-based position
+    const currentUserPosition = currentUserIndex + 1;
     const currentUserCoins = currentUserIndex >= 0 ? allUsers[currentUserIndex].get('Coins') || 0 : 0;
 
-    // Get top 5 users
     const top5Users = allUsers.slice(0, 5);
 
-    // Build leaderboard message
     let leaderboardText = '*COIN LEADERBOARD*\n\n';
     
     top5Users.forEach((user, index) => {
@@ -626,7 +645,6 @@ app.command('/leaderboard', async ({ ack, body, client }) => {
       leaderboardText += `${medal} *${position}.* ${displayName} - *${coins} coins*\n`;
     });
 
-    // Add current user's position if not in top 5
     if (currentUserPosition > 5) {
       leaderboardText += `\n*your position:* #${currentUserPosition} with *${currentUserCoins} coins*`;
     } else if (currentUserPosition > 0) {
