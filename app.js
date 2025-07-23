@@ -293,7 +293,6 @@ app.command('/update-coins', async ({ ack, body, client }) => {
   }
 });
 
-// Function to get user's current coin balance
 async function getUserCoins(slackId) {
   try {
     const userRecords = await base('Users').select({
@@ -310,7 +309,6 @@ async function getUserCoins(slackId) {
   }
 }
 
-// Function to update user's stickersheet count
 async function addStickersheet(slackId) {
   try {
     const userRecords = await base('Users').select({
@@ -320,7 +318,6 @@ async function addStickersheet(slackId) {
     if (userRecords.length > 0) {
       const currentStickersheets = userRecords[0].get('Stickersheets') || [];
       
-      // Add "Stickersheet 1" to the multiselect array
       const newStickersheets = [...currentStickersheets, 'Stickersheet 1'];
 
       await base('Users').update([
@@ -341,7 +338,6 @@ async function addStickersheet(slackId) {
   }
 }
 
-// Function to deduct coins from user
 async function deductCoins(slackId, amount) {
   try {
     const userRecords = await base('Users').select({
@@ -381,34 +377,28 @@ app.command('/shop', async ({ ack, body, client }) => {
     const slackId = body.user_id;
     console.log('🛍️ /shop command triggered by user:', slackId);
 
-    // Get user's current coin balance
     const currentCoins = await getUserCoins(slackId);
     console.log('💰 User coin balance:', currentCoins);
 
-    // Check if user has enough coins
     if (currentCoins < 10) {
       await client.chat.postMessage({
         channel: slackId,
-        text: `❌ Sorry! You only have ${currentCoins} coins. You need 10 coins to buy a stickersheet. Keep collecting with \`/collect\`!`
+        text: `sorry, you only have ${currentCoins} coins. you need 10 coins to buy stickersheet 1. keep collecting with \`/collect\`! beep beep boop` 
       });
       return;
     }
 
-    // Process the purchase
     await Promise.all([
       deductCoins(slackId, 10),
       addStickersheet(slackId)
     ]);
 
-    // Get updated balance
     const newBalance = await getUserCoins(slackId);
     const newStickersheets = await getUserStickersheets(slackId);
 
     const purchaseMessages = [
-      `🎉 Purchase successful! You now have ${newBalance} coins and ${newStickersheets} stickersheets!`,
-      `✨ Yay! Stickersheet acquired! Your balance: ${newBalance} coins, Stickersheets: ${newStickersheets}`,
-      `🚀 Woo! You got a stickersheet! Coins remaining: ${newBalance}, Total stickersheets: ${newStickersheets}`,
-      `🌟 Amazing! Stickersheet purchased! You have ${newBalance} coins left and ${newStickersheets} stickersheets now!`
+      `sticker sheet acquired!! you now have ${newBalance} coins and ${newStickersheets} stickersheets!`,
+      `BEEP BEEP YAY! you now have ${newBalance} coins, and you stickersheets are ${newStickersheets}`,
     ];
 
     const randomMessage = purchaseMessages[Math.floor(Math.random() * purchaseMessages.length)];
@@ -426,7 +416,7 @@ app.command('/shop', async ({ ack, body, client }) => {
     try {
       await client.chat.postMessage({
         channel: body.user_id,
-        text: '❌ Sorry! There was an error processing your purchase. Please try again or contact support.'
+        text: 'oopies! zorp couldn\'t process your purchase, pls ask @magic frog for help'
       });
     } catch (dmError) {
       console.error('⚠️ Could not send error DM:', dmError);
@@ -434,61 +424,6 @@ app.command('/shop', async ({ ack, body, client }) => {
   }
 });
 
-app.view('shop_modal', async ({ ack, view, body, client }) => {
-  try {
-    await ack();
-
-    const metadata = JSON.parse(view.private_metadata);
-    const { slackId, currentCoins } = metadata;
-
-    // Check if user has enough coins
-    if (currentCoins < 10) {
-      await client.chat.postMessage({
-        channel: slackId,
-        text: '❌ Sorry! You need 10 coins to buy a stickersheet. Keep collecting coins with `/collect`!'
-      });
-      return;
-    }
-
-    // Process the purchase
-    await Promise.all([
-      deductCoins(slackId, 10),
-      addStickersheet(slackId)
-    ]);
-
-    // Get updated balance
-    const newBalance = await getUserCoins(slackId);
-    const newStickersheets = await getUserStickersheets(slackId);
-
-    const purchaseMessages = [
-      `🎉 Purchase successful! You now have ${newBalance} coins and ${newStickersheets} stickersheets!`,
-      `✨ Yay! Stickersheet acquired! Your balance: ${newBalance} coins, Stickersheets: ${newStickersheets}`,
-      `🚀 Woo! You got a stickersheet! Coins remaining: ${newBalance}, Total stickersheets: ${newStickersheets}`,
-      `🌟 Amazing! Stickersheet purchased! You have ${newBalance} coins left and ${newStickersheets} stickersheets now!`
-    ];
-
-    const randomMessage = purchaseMessages[Math.floor(Math.random() * purchaseMessages.length)];
-
-    await client.chat.postMessage({
-      channel: slackId,
-      text: randomMessage
-    });
-
-  } catch (error) {
-    console.error('⚠️ Error in shop_modal view:', JSON.stringify(error, null, 2));
-    
-    try {
-      await client.chat.postMessage({
-        channel: body.user.id,
-        text: '❌ Sorry! There was an error processing your purchase. Please try again or contact support.'
-      });
-    } catch (dmError) {
-      console.error('⚠️ Could not send error DM:', dmError);
-    }
-  }
-});
-
-// Helper function to get user's stickersheet count
 async function getUserStickersheets(slackId) {
   try {
     const userRecords = await base('Users').select({
