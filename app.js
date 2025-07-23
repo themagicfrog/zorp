@@ -256,62 +256,6 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
 });
 
 
-app.command('/update-coins', async ({ ack, body, client }) => {
-  try {
-    await ack();
-    
-    
-    if (body.user_id !== 'U06UYA4AH6F') { 
-      await client.chat.postMessage({
-        channel: body.user_id,
-        text: 'sorry, you cant use this command'
-      });
-      return;
-    }
-
-    await client.chat.postMessage({
-      channel: body.user_id,
-      text: 'syncing users coin amounts... beep beep boop'
-    });
-
-    const allRequests = await base('Coin Requests').select().all();
-    const uniqueUsers = new Map();
-
-    allRequests.forEach(record => {
-      const slackId = record.get('Slack ID');
-      const displayName = record.get('Display Name');
-      if (slackId && displayName) {
-        uniqueUsers.set(slackId, displayName);
-      }
-    });
-
-    let createdCount = 0;
-    let updatedCount = 0;
-
-    for (const [slackId, displayName] of uniqueUsers) {
-      try {
-        await getOrCreateUser(slackId, displayName);
-        await updateUserCoins(slackId);
-        createdCount++;
-      } catch (error) {
-        console.error(`Error processing user ${slackId}:`, error);
-      }
-    }
-
-    await client.chat.postMessage({
-      channel: body.user_id,
-      text: `user sync complete! processed ${uniqueUsers.size} users`
-    });
-
-  } catch (error) {
-    console.error('⚠️ Error in /sync-users command:', error);
-    await client.chat.postMessage({
-      channel: body.user_id,
-      text: 'error during user sync'
-    });
-  }
-});
-
 async function getUserCoins(slackId) {
   try {
     const userRecords = await base('Users').select({
@@ -400,6 +344,28 @@ app.command('/shop', async ({ ack, body, client }) => {
     const slackId = body.user_id;
     const triggerId = body.trigger_id;
     console.log('🛍️ /shop command triggered by user:', slackId);
+
+    console.log('🔄 Updating all users coin amounts...');
+    const allRequests = await base('Coin Requests').select().all();
+    const uniqueUsers = new Map();
+
+    allRequests.forEach(record => {
+      const requestSlackId = record.get('Slack ID');
+      const displayName = record.get('Display Name');
+      if (requestSlackId && displayName) {
+        uniqueUsers.set(requestSlackId, displayName);
+      }
+    });
+
+    for (const [requestSlackId, displayName] of uniqueUsers) {
+      try {
+        await getOrCreateUser(requestSlackId, displayName);
+        await updateUserCoins(requestSlackId);
+      } catch (error) {
+        console.error(`Error processing user ${requestSlackId}:`, error);
+      }
+    }
+    console.log(`✅ Updated coin amounts for ${uniqueUsers.size} users`);
 
     const currentCoins = await getUserCoins(slackId);
     const currentStickersheets = await getUserStickersheetsList(slackId);
@@ -563,6 +529,18 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
       await client.chat.postMessage({
         channel: slackId,
         text: `sorry! ${progressionError}`
+      });
+      return;
+    }
+    
+    const selectedStickersheetName = selectedStickersheet === 'stickersheet1' ? 'PLANET STICKERSHEET' : 
+                                    selectedStickersheet === 'stickersheet2' ? 'GALAXY STICKERSHEET' : 
+                                    'UNIVERSE STICKERSHEET';
+    
+    if (currentStickersheets.includes(selectedStickersheetName)) {
+      await client.chat.postMessage({
+        channel: slackId,
+        text: `you already have that stickersheet, get a different one!`
       });
       return;
     }
