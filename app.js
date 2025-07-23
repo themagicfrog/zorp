@@ -345,28 +345,6 @@ app.command('/shop', async ({ ack, body, client }) => {
     const triggerId = body.trigger_id;
     console.log('🛍️ /shop command triggered by user:', slackId);
 
-    console.log('🔄 Updating all users coin amounts...');
-    const allRequests = await base('Coin Requests').select().all();
-    const uniqueUsers = new Map();
-
-    allRequests.forEach(record => {
-      const requestSlackId = record.get('Slack ID');
-      const displayName = record.get('Display Name');
-      if (requestSlackId && displayName) {
-        uniqueUsers.set(requestSlackId, displayName);
-      }
-    });
-
-    for (const [requestSlackId, displayName] of uniqueUsers) {
-      try {
-        await getOrCreateUser(requestSlackId, displayName);
-        await updateUserCoins(requestSlackId);
-      } catch (error) {
-        console.error(`Error processing user ${requestSlackId}:`, error);
-      }
-    }
-    console.log(`✅ Updated coin amounts for ${uniqueUsers.size} users`);
-
     const currentCoins = await getUserCoins(slackId);
     const currentStickersheets = await getUserStickersheetsList(slackId);
     console.log('💰 User coin balance:', currentCoins);
