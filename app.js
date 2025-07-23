@@ -384,7 +384,7 @@ app.command('/shop', async ({ ack, body, client }) => {
       view: {
         type: 'modal',
         callback_id: 'shop_modal',
-        private_metadata: JSON.stringify({ slackId, currentCoins }),
+        private_metadata: JSON.stringify({ slackId }),
         title: { type: 'plain_text', text: 'ZORP SHOP' },
         submit: { type: 'plain_text', text: 'buy stickers' },
         close: { type: 'plain_text', text: 'cancel' },
@@ -502,7 +502,7 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
     await ack();
 
     const metadata = JSON.parse(view.private_metadata);
-    const { slackId, currentCoins } = metadata;
+    const { slackId } = metadata;
     
     const selectedStickersheet = view.state.values['stickersheet_selection']['stickersheet_selected'].selected_option.value;
     
@@ -514,6 +514,7 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
     
     const cost = stickersheetCosts[selectedStickersheet];
     
+    const currentCoins = await getUserCoins(slackId);
     const currentStickersheets = await getUserStickersheetsList(slackId);
     const hasPlanet = currentStickersheets.includes('PLANET STICKERSHEET');
     const hasGalaxy = currentStickersheets.includes('GALAXY STICKERSHEET');
