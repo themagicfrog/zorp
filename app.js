@@ -318,9 +318,9 @@ async function addStickersheet(slackId, stickersheetType = 'stickersheet1') {
     if (userRecords.length > 0) {
       const currentStickersheets = userRecords[0].get('Stickersheets') || [];
       
-      const stickersheetName = stickersheetType === 'stickersheet1' ? 'Stickersheet 1' : 
-                              stickersheetType === 'stickersheet2' ? 'Stickersheet 2' : 
-                              'Stickersheet 3';
+      const stickersheetName = stickersheetType === 'stickersheet1' ? 'PLANET STICKERSHEET' : 
+                              stickersheetType === 'stickersheet2' ? 'GALAXY STICKERSHEET' : 
+                              'UNIVERSE STICKERSHEET';
       
       const newStickersheets = [...currentStickersheets, stickersheetName];
 
@@ -383,7 +383,16 @@ app.command('/shop', async ({ ack, body, client }) => {
     console.log('🛍️ /shop command triggered by user:', slackId);
 
     const currentCoins = await getUserCoins(slackId);
+    const currentStickersheets = await getUserStickersheetsList(slackId);
     console.log('💰 User coin balance:', currentCoins);
+    console.log('🎨 User stickersheets:', currentStickersheets);
+
+    const hasPlanet = currentStickersheets.includes('PLANET STICKERSHEET');
+    const hasGalaxy = currentStickersheets.includes('GALAXY STICKERSHEET');
+    
+    const canBuyPlanet = currentCoins >= 10;
+    const canBuyGalaxy = hasPlanet && currentCoins >= 20;
+    const canBuyUniverse = hasGalaxy && currentCoins >= 30;
 
     await client.views.open({
       trigger_id: triggerId,
@@ -409,7 +418,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*stickersheet 1 - 10 coins*\nstarter stickersheet'
+              text: '*PLANET STICKERSHEET - 10 coins*\nstarter stickersheet'
             },
             accessory: {
               type: 'image',
@@ -421,7 +430,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*stickersheet 2 - 20 coins*\npremium stickersheet'
+              text: '*GALAXY STICKERSHEET - 20 coins*\npremium stickersheet'
             },
             accessory: {
               type: 'image',
@@ -433,7 +442,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*stickersheet 3 - 30 coins*\nultimate stickersheet'
+              text: '*UNIVERSE STICKERSHEET - 30 coins*\nultimate stickersheet'
             },
             accessory: {
               type: 'image',
@@ -454,19 +463,19 @@ app.command('/shop', async ({ ack, body, client }) => {
               placeholder: { type: 'plain_text', text: 'select a stickersheet...' },
               options: [
                 {
-                  text: { type: 'plain_text', text: 'stickersheet 1 - 10 coins' },
+                  text: { type: 'plain_text', text: canBuyPlanet ? 'PLANET STICKERSHEET - 10 coins' : 'PLANET STICKERSHEET - 10 coins (need 10 coins)' },
                   value: 'stickersheet1',
-                  description: { type: 'plain_text', text: 'starter stickersheet' }
+                  description: { type: 'plain_text', text: canBuyPlanet ? 'starter stickersheet' : 'need 10 coins' }
                 },
                 {
-                  text: { type: 'plain_text', text: 'stickersheet 2 - 20 coins' },
+                  text: { type: 'plain_text', text: canBuyGalaxy ? 'GALAXY STICKERSHEET - 20 coins' : 'GALAXY STICKERSHEET - 20 coins (need PLANET + 20 coins)' },
                   value: 'stickersheet2',
-                  description: { type: 'plain_text', text: 'premium stickersheet' }
+                  description: { type: 'plain_text', text: canBuyGalaxy ? 'premium stickersheet' : 'need PLANET stickersheet + 20 coins' }
                 },
                 {
-                  text: { type: 'plain_text', text: 'stickersheet 3 - 30 coins' },
+                  text: { type: 'plain_text', text: canBuyUniverse ? 'UNIVERSE STICKERSHEET - 30 coins' : 'UNIVERSE STICKERSHEET - 30 coins (need GALAXY + 30 coins)' },
                   value: 'stickersheet3',
-                  description: { type: 'plain_text', text: 'ultimate stickersheet' }
+                  description: { type: 'plain_text', text: canBuyUniverse ? 'ultimate stickersheet' : 'need GALAXY stickersheet + 30 coins' }
                 }
               ]
             }
@@ -520,6 +529,25 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
     
     const cost = stickersheetCosts[selectedStickersheet];
     
+    const currentStickersheets = await getUserStickersheetsList(slackId);
+    const hasPlanet = currentStickersheets.includes('PLANET STICKERSHEET');
+    const hasGalaxy = currentStickersheets.includes('GALAXY STICKERSHEET');
+    
+    let progressionError = null;
+    if (selectedStickersheet === 'stickersheet2' && !hasPlanet) {
+      progressionError = 'you need to buy PLANET STICKERSHEET first before you can buy GALAXY STICKERSHEET!';
+    } else if (selectedStickersheet === 'stickersheet3' && !hasGalaxy) {
+      progressionError = 'you need to buy GALAXY STICKERSHEET first before you can buy UNIVERSE STICKERSHEET!';
+    }
+    
+    if (progressionError) {
+      await client.chat.postMessage({
+        channel: slackId,
+        text: `sorry! ${progressionError}`
+      });
+      return;
+    }
+    
     if (currentCoins < cost) {
       await client.chat.postMessage({
         channel: slackId,
@@ -566,6 +594,68 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
   }
 });
 
+app.command('/leaderboard', async ({ ack, body, client }) => {
+  try {
+    await ack();
+    
+    const slackId = body.user_id;
+    console.log('🏆 /leaderboard command triggered by user:', slackId);
+
+    // Get all users sorted by coins (descending)
+    const allUsers = await base('Users').select({
+      sort: [{ field: 'Coins', direction: 'desc' }]
+    }).all();
+
+    // Find current user's position
+    const currentUserIndex = allUsers.findIndex(user => user.get('Slack ID') === slackId);
+    const currentUserPosition = currentUserIndex + 1; // 1-based position
+    const currentUserCoins = currentUserIndex >= 0 ? allUsers[currentUserIndex].get('Coins') || 0 : 0;
+
+    // Get top 5 users
+    const top5Users = allUsers.slice(0, 5);
+
+    // Build leaderboard message
+    let leaderboardText = '*COIN LEADERBOARD*\n\n';
+    
+    top5Users.forEach((user, index) => {
+      const position = index + 1;
+      const displayName = user.get('Display Name') || 'Unknown';
+      const coins = user.get('Coins') || 0;
+      const medal = position === 1 ? '🥇' : position === 2 ? '🥈' : position === 3 ? '🥉' : '🏅';
+      
+      leaderboardText += `${medal} *${position}.* ${displayName} - *${coins} coins*\n`;
+    });
+
+    // Add current user's position if not in top 5
+    if (currentUserPosition > 5) {
+      leaderboardText += `\n*your position:* #${currentUserPosition} with *${currentUserCoins} coins*`;
+    } else if (currentUserPosition > 0) {
+      leaderboardText += `\n*your position:* #${currentUserPosition} with *${currentUserCoins} coins*`;
+    } else {
+      leaderboardText += `\n*your position:* not ranked yet - start collecting coins with \`/collect\`!`;
+    }
+
+    await client.chat.postMessage({
+      channel: slackId,
+      text: leaderboardText
+    });
+
+    console.log('✅ Leaderboard sent successfully');
+
+  } catch (error) {
+    console.error('⚠️ Error in /leaderboard command:', error);
+    
+    try {
+      await client.chat.postMessage({
+        channel: body.user_id,
+        text: 'sorry! zorp couldn\'t load the leaderboard, pls ask @magic frog for help'
+      });
+    } catch (dmError) {
+      console.error('⚠️ Could not send error DM:', dmError);
+    }
+  }
+});
+
 async function getUserStickersheets(slackId) {
   try {
     const userRecords = await base('Users').select({
@@ -580,6 +670,22 @@ async function getUserStickersheets(slackId) {
   } catch (error) {
     console.error('⚠️ Error getting user stickersheets:', error);
     return 0;
+  }
+}
+  
+async function getUserStickersheetsList(slackId) {
+  try {
+    const userRecords = await base('Users').select({
+      filterByFormula: `{Slack ID} = '${slackId}'`
+    }).firstPage();
+
+    if (userRecords.length > 0) {
+      return userRecords[0].get('Stickersheets') || [];
+    }
+    return [];
+  } catch (error) {
+    console.error('⚠️ Error getting user stickersheets list:', error);
+    return [];
   }
 }
 
