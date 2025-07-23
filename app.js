@@ -309,7 +309,7 @@ async function getUserCoins(slackId) {
   }
 }
 
-async function addStickersheet(slackId) {
+async function addStickersheet(slackId, stickersheetType = 'stickersheet1') {
   try {
     const userRecords = await base('Users').select({
       filterByFormula: `{Slack ID} = '${slackId}'`
@@ -318,7 +318,11 @@ async function addStickersheet(slackId) {
     if (userRecords.length > 0) {
       const currentStickersheets = userRecords[0].get('Stickersheets') || [];
       
-      const newStickersheets = [...currentStickersheets, 'Stickersheet 1'];
+      const stickersheetName = stickersheetType === 'stickersheet1' ? 'Stickersheet 1' : 
+                              stickersheetType === 'stickersheet2' ? 'Stickersheet 2' : 
+                              'Stickersheet 3';
+      
+      const newStickersheets = [...currentStickersheets, stickersheetName];
 
       await base('Users').update([
         {
@@ -329,7 +333,7 @@ async function addStickersheet(slackId) {
         }
       ]);
 
-      console.log(`✅ Added stickersheet for user ${slackId}: ${newStickersheets.length} total`);
+      console.log(`✅ Added ${stickersheetName} for user ${slackId}: ${newStickersheets.length} total`);
       return newStickersheets.length;
     }
   } catch (error) {
@@ -375,30 +379,129 @@ app.command('/shop', async ({ ack, body, client }) => {
     await ack();
     
     const slackId = body.user_id;
+    const triggerId = body.trigger_id;
     console.log('🛍️ /shop command triggered by user:', slackId);
 
     const currentCoins = await getUserCoins(slackId);
     console.log('💰 User coin balance:', currentCoins);
 
-    if (currentCoins < 10) {
+    await client.views.open({
+      trigger_id: triggerId,
+      view: {
+        type: 'modal',
+        callback_id: 'shop_modal',
+        private_metadata: JSON.stringify({ slackId, currentCoins }),
+        title: { type: 'plain_text', text: 'ZORP SHOP' },
+        submit: { type: 'plain_text', text: 'buy stickers' },
+        close: { type: 'plain_text', text: 'cancel' },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*welcome to the Zorp Shop!* \n\nyou currently have *${currentCoins} coins* in your wallet. beep beep boop`
+            }
+          },
+          {
+            type: 'divider'
+          },
+          {
+            type: 'input',
+            block_id: 'stickersheet_selection',
+            label: { type: 'plain_text', text: 'choose a stickersheet to purchase:' },
+            element: {
+              type: 'static_select',
+              action_id: 'stickersheet_selected',
+              placeholder: { type: 'plain_text', text: 'select a stickersheet...' },
+              options: [
+                {
+                  text: { type: 'plain_text', text: 'stickersheet 1 - 10 coins' },
+                  value: 'stickersheet1',
+                  description: { type: 'plain_text', text: 'starter stickersheet' }
+                },
+                {
+                  text: { type: 'plain_text', text: 'stickersheet 2 - 20 coins' },
+                  value: 'stickersheet2',
+                  description: { type: 'plain_text', text: 'premium stickersheet' }
+                },
+                {
+                  text: { type: 'plain_text', text: 'stickersheet 3 - 30 coins' },
+                  value: 'stickersheet3',
+                  description: { type: 'plain_text', text: 'ultimate stickersheet' }
+                }
+              ]
+            }
+          },
+          {
+            type: 'divider'
+          },
+          {
+            type: 'context',
+            elements: [
+              {
+                type: 'mrkdwn',
+                text: currentCoins >= 10 
+                  ? 'you have enough coins to buy at least one stickersheet!'
+                  : 'you need more coins to buy a stickersheet. keep collecting!'
+              }
+            ]
+          }
+        ]
+      }
+    });
+
+  } catch (error) {
+    console.error('⚠️ Error in /shop command:', error);
+    
+    try {
+      await client.chat.postMessage({
+        channel: body.user_id,
+        text: 'oopies! zorp couldn\'t open the shop, pls ask @magic frog for help'
+      });
+    } catch (dmError) {
+      console.error('⚠️ Could not send error DM:', dmError);
+    }
+  }
+});
+
+app.view('shop_modal', async ({ ack, view, body, client }) => {
+  try {
+    await ack();
+
+    const metadata = JSON.parse(view.private_metadata);
+    const { slackId, currentCoins } = metadata;
+    
+    const selectedStickersheet = view.state.values['stickersheet_selection']['stickersheet_selected'].selected_option.value;
+    
+    const stickersheetCosts = {
+      'stickersheet1': 10,
+      'stickersheet2': 20,
+      'stickersheet3': 30
+    };
+    
+    const cost = stickersheetCosts[selectedStickersheet];
+    
+    if (currentCoins < cost) {
       await client.chat.postMessage({
         channel: slackId,
-        text: `sorry, you only have ${currentCoins} coins. you need 10 coins to buy stickersheet 1. keep collecting with \`/collect\`! beep beep boop` 
+        text: `sorry! you only have ${currentCoins} coins but need ${cost} coins for ${selectedStickersheet}. keep collecting with \`/collect\`!`
       });
       return;
     }
 
     await Promise.all([
-      deductCoins(slackId, 10),
-      addStickersheet(slackId)
+      deductCoins(slackId, cost),
+      addStickersheet(slackId, selectedStickersheet)
     ]);
 
     const newBalance = await getUserCoins(slackId);
     const newStickersheets = await getUserStickersheets(slackId);
 
     const purchaseMessages = [
-      `sticker sheet acquired!! you now have ${newBalance} coins and ${newStickersheets} stickersheets!`,
-      `BEEP BEEP YAY! you now have ${newBalance} coins, and you stickersheets are ${newStickersheets}`,
+      `${selectedStickersheet} acquired! you now have ${newBalance} coins and ${newStickersheets} stickersheets!`,
+      `yay! ${selectedStickersheet} purchased! your balance: ${newBalance} coins, stickersheets: ${newStickersheets}`,
+      `woo! you got ${selectedStickersheet}! coins remaining: ${newBalance}, total stickersheets: ${newStickersheets}`,
+      `amazing! ${selectedStickersheet} purchased! you have ${newBalance} coins left and ${newStickersheets} stickersheets now!`
     ];
 
     const randomMessage = purchaseMessages[Math.floor(Math.random() * purchaseMessages.length)];
@@ -408,15 +511,15 @@ app.command('/shop', async ({ ack, body, client }) => {
       text: randomMessage
     });
 
-    console.log('✅ Purchase completed successfully');
+    console.log(`✅ Purchase completed successfully: ${selectedStickersheet} for ${cost} coins`);
 
   } catch (error) {
-    console.error('⚠️ Error in /shop command:', error);
+    console.error('⚠️ Error in shop_modal view:', error);
     
     try {
       await client.chat.postMessage({
-        channel: body.user_id,
-        text: 'oopies! zorp couldn\'t process your purchase, pls ask @magic frog for help'
+        channel: body.user.id,
+        text: 'sorry! zappy couldn\'t process your purchase, pls ask @magic frog for help'
       });
     } catch (dmError) {
       console.error('⚠️ Could not send error DM:', dmError);
