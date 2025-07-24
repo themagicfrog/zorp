@@ -21,26 +21,26 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
 
 // define all the stickersheet types and their requirements
 const STICKERSHEET_CONFIG = {
-  stickersheet1: { name: 'PLANET STICKERSHEET', cost: 10, description: 'starter stickersheet' },
-  stickersheet2: { name: 'GALAXY STICKERSHEET', cost: 20, description: 'premium stickersheet', requires: 'PLANET STICKERSHEET' },
-  stickersheet3: { name: 'UNIVERSE STICKERSHEET', cost: 30, description: 'ultimate stickersheet', requires: 'GALAXY STICKERSHEET' }
+  stickersheet1: { name: 'PLANET STICKERSHEET', cost: 25, description: 'starter stickersheet' },
+  stickersheet2: { name: 'GALAXY STICKERSHEET', cost: 60, description: 'premium stickersheet', requires: 'PLANET STICKERSHEET' },
+  stickersheet3: { name: 'UNIVERSE STICKERSHEET', cost: 105, description: 'ultimate stickersheet', requires: 'GALAXY STICKERSHEET' }
 };
 
 // define all the activities users can do to earn coins
 const COIN_ACTIONS = [
   { label: 'Comment something meaningful on another game', value: 'Comment', coins: 1 },
+  { label: 'Post a progress update', value: 'Update', coins: 1 },
   { label: 'Work in a huddle on your game', value: 'Huddle', coins: 2 },
-  { label: 'Help someone fix a problem in their game (write note for coin #)', value: 'Fix Problem', coins: null },
   { label: 'Post your game idea', value: 'Post', coins: 3 },
   { label: 'Attend an event', value: 'Attend Event', coins: 3 },
-  { label: 'Post a progress update', value: 'Update', coins: 2 },
-  { label: 'Tell a friend & post it somewhere (Reddit, Discord, etc.)', value: 'Share', coins: 5 },
-  { label: 'Host an event (write note for coin #)', value: 'Host Event', coins: null },
-  { label: 'Post a Jumpstart poster somewhere', value: 'Poster', coins: 10 },
+  { label: 'Tell a friend & post it somewhere (Reddit, Discord, etc.)', value: 'Share', coins: 3 },
+  { label: 'Post a Jumpstart poster somewhere', value: 'Poster', coins: 2 },
+  { label: 'Host an event (write note for coin #)', value: 'Host Event', coins: 5 },
   { label: 'Record game explanation and process (face+voice)', value: 'Record', coins: 10 },
-  { label: 'Draw/make all assets', value: 'Create Assets', coins: 20 },
+  { label: 'Draw/make all assets', value: 'Create Assets', coins: 15 },
+  { label: 'Help someone fix a problem in their game (write note for coin #)', value: 'Fix Problem', coins: null },
   { label: 'Open PR & do a task (write note for coin #)', value: 'Task (PR)', coins: null },
-  { label: 'Meetup w/ a Jumpstarter IRL', value: 'IRL Meetup', coins: 30 }
+  { label: 'Meetup w/ a Jumpstarter IRL', value: 'IRL Meetup', coins: 25 }
 ];
 
 // helper function to get a user's record from airtable
@@ -64,18 +64,12 @@ async function getOrCreateUser(slackId, displayName) {
       return existingUser;
     }
 
-    // get any existing coin requests for this user
-    const existingRequests = await base('Coin Requests').select({
-      filterByFormula: `{Slack ID} = '${slackId}'`
-    }).all();
-
     const newUser = await base('Users').create([
       {
         fields: {
           'Slack ID': slackId,
           'Display Name': displayName,
-          'Coins': 0,
-          'Coin Requests': existingRequests.map(record => record.id)
+          'Coins': 0
         }
       }
     ]);
@@ -83,29 +77,6 @@ async function getOrCreateUser(slackId, displayName) {
     return newUser[0];
   } catch (error) {
     throw error;
-  }
-}
-
-// update the linked coin requests for a user
-async function updateUserLinkedRequests(slackId) {
-  try {
-    const userRecord = await getUserRecord(slackId);
-    if (!userRecord) return;
-
-    // get all coin requests for this user
-    const requests = await base('Coin Requests').select({
-      filterByFormula: `{Slack ID} = '${slackId}'`
-    }).all();
-
-    // update the user's linked requests
-    await base('Users').update([
-      {
-        id: userRecord.id,
-        fields: { 'Coin Requests': requests.map(record => record.id) }
-      }
-    ]);
-  } catch (error) {
-    // silently handle errors
   }
 }
 
@@ -222,28 +193,6 @@ async function getUserStickersheets(slackId) {
     return stickersheets.length;
   } catch (error) {
     return 0;
-  }
-}
-
-// get all coin requests for a user
-async function getUserCoinRequests(slackId) {
-  try {
-    const requests = await base('Coin Requests').select({
-      filterByFormula: `{Slack ID} = '${slackId}'`,
-      sort: [{ field: 'Request Date', direction: 'desc' }]
-    }).all();
-    
-    return requests.map(record => ({
-      id: record.id,
-      action: record.get('Action'),
-      status: record.get('Status'),
-      coinsGiven: record.get('Coins Given'),
-      messageLink: record.get('Message Link'),
-      requestDate: record.get('Request Date'),
-      requestNote: record.get('Request Note')
-    }));
-  } catch (error) {
-    return [];
   }
 }
 
@@ -373,15 +322,14 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
       `your request is now at our UFO! you'll get your coins soon (as long as you're not a devious minion)`,
     ];
 
-    // save the request to airtable, send confirmation dm, create user if needed, and update linked requests
+    // save the request to airtable, send confirmation dm, and create user if needed
     await Promise.all([
       base('Coin Requests').create([{ fields }]),
       client.chat.postMessage({
         channel: slackId,
         text: getRandomMessage(confirmationMessages)
       }),
-      getOrCreateUser(slackId, displayName),
-      updateUserLinkedRequests(slackId)
+      getOrCreateUser(slackId, displayName)
     ]);
 
   } catch (error) {
@@ -412,9 +360,9 @@ app.command('/shop', async ({ ack, body, client }) => {
     const hasPlanet = currentStickersheets.includes('PLANET STICKERSHEET');
     const hasGalaxy = currentStickersheets.includes('GALAXY STICKERSHEET');
     
-    const canBuyPlanet = currentCoins >= 10;
-    const canBuyGalaxy = hasPlanet && currentCoins >= 20;
-    const canBuyUniverse = hasGalaxy && currentCoins >= 30;
+    const canBuyPlanet = currentCoins >= 25;
+    const canBuyGalaxy = hasPlanet && currentCoins >= 60;
+    const canBuyUniverse = hasGalaxy && currentCoins >= 105;
 
     // create the dropdown options for stickersheets
     const stickersheetOptions = Object.entries(STICKERSHEET_CONFIG).map(([key, config]) => {
@@ -426,18 +374,18 @@ app.command('/shop', async ({ ack, body, client }) => {
       switch (key) {
         case 'stickersheet1':
           canBuy = canBuyPlanet;
-          if (!canBuy) description = 'need 10 coins';
+          if (!canBuy) description = 'need 25 coins';
           break;
         case 'stickersheet2':
           canBuy = canBuyGalaxy;
           if (!canBuy) {
-            description = 'need PLANET stickersheet + 20 coins';
+            description = 'need PLANET stickersheet + 60 coins';
           }
           break;
         case 'stickersheet3':
           canBuy = canBuyUniverse;
           if (!canBuy) {
-            description = 'need GALAXY stickersheet + 30 coins';
+            description = 'need GALAXY stickersheet + 105 coins';
           }
           break;
       }
@@ -474,7 +422,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*PLANET STICKERSHEET - 10 coins*'
+              text: '*PLANET STICKERSHEET - 25 coins*'
             },
             accessory: {
               type: 'image',
@@ -486,7 +434,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*GALAXY STICKERSHEET - 20 coins & PLANET*'
+              text: '*GALAXY STICKERSHEET - 60 coins & PLANET*'
             },
             accessory: {
               type: 'image',
@@ -498,7 +446,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*UNIVERSE STICKERSHEET - 30 coins & GALAXY*'
+              text: '*UNIVERSE STICKERSHEET - 105 coins & GALAXY*'
             },
             accessory: {
               type: 'image',
@@ -528,7 +476,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             elements: [
               {
                 type: 'mrkdwn',
-                text: currentCoins >= 10 
+                text: currentCoins >= 25 
                   ? 'you have enough coins to buy at least one stickersheet!'
                   : 'you need more coins to buy a stickersheet. keep collecting!'
               }
@@ -602,11 +550,8 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
       return;
     }
 
-    // process the purchase - deduct coins and add stickersheet
-    await Promise.all([
-      deductCoins(slackId, config.cost),
-      addStickersheet(slackId, selectedStickersheet)
-    ]);
+    // process the purchase - add stickersheet (no coin deduction)
+    await addStickersheet(slackId, selectedStickersheet);
 
     // get updated user data for confirmation message
     const newBalance = await getUserCoins(slackId);
@@ -616,8 +561,8 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
     const purchaseMessages = [
       `${config.name} acquired! you now have ${newBalance} coins and ${newStickersheets} stickersheets!`,
       `yay! ${config.name} purchased! your balance: ${newBalance} coins, stickersheets: ${newStickersheets}`,
-      `woo! you got ${config.name}! coins remaining: ${newBalance}, total stickersheets: ${newStickersheets}`,
-      `amazing! ${config.name} purchased! you have ${newBalance} coins left and ${newStickersheets} stickersheets now!`
+      `woo! you got ${config.name}! total coins: ${newBalance}, total stickersheets: ${newStickersheets}`,
+      `amazing! ${config.name} purchased! you have ${newBalance} coins and ${newStickersheets} stickersheets now!`
     ];
 
     // send confirmation message to user
@@ -691,120 +636,6 @@ app.command('/leaderboard', async ({ ack, body, client }) => {
       await client.chat.postMessage({
         channel: body.user_id,
         text: 'sorry! zorp couldn\'t load the leaderboard, pls ask @magic frog for help'
-      });
-    } catch (dmError) {
-    }
-  }
-});
-
-// handle the /requests command - shows a user's coin requests
-app.command('/requests', async ({ ack, body, client }) => {
-  try {
-    await ack();
-    
-    const slackId = body.user_id;
-
-    // get user's coin requests
-    const userCoinRequests = await getUserCoinRequests(slackId);
-
-    if (userCoinRequests.length === 0) {
-      await client.chat.postMessage({
-        channel: slackId,
-        text: 'you haven\'t submitted any coin requests yet! use \`/collect\` to start earning coins!'
-      });
-      return;
-    }
-
-    let requestsText = `*YOUR COIN REQUESTS*\n\n`;
-    userCoinRequests.forEach(request => {
-      requestsText += `*${request.action}* (Status: ${request.status}, Coins: ${request.coinsGiven || 'N/A'}, Date: ${request.requestDate})\n`;
-      if (request.messageLink) {
-        requestsText += `Message Link: ${request.messageLink}\n`;
-      }
-      if (request.requestNote) {
-        requestsText += `Request Note: ${request.requestNote}\n`;
-      }
-      requestsText += `-------------------------\n`;
-    });
-
-    await client.chat.postMessage({
-      channel: slackId,
-      text: requestsText
-    });
-
-  } catch (error) {
-    // send error message if requests fails to load
-    try {
-      await client.chat.postMessage({
-        channel: body.user_id,
-        text: 'sorry! zorp couldn\'t load your requests, pls ask @magic frog for help'
-      });
-    } catch (dmError) {
-    }
-  }
-});
-
-// handle the /admin-requests command - shows all users with their linked requests (admin only)
-app.command('/admin-requests', async ({ ack, body, client }) => {
-  try {
-    await ack();
-    
-    const slackId = body.user_id;
-
-    // check if user is admin (you can customize this check)
-    const adminUsers = ['magic frog']; // add admin usernames here
-    const userInfo = await client.users.info({ user: slackId });
-    const displayName = userInfo.user.profile.display_name || userInfo.user.profile.real_name || body.user.name;
-    
-    if (!adminUsers.includes(displayName)) {
-      await client.chat.postMessage({
-        channel: slackId,
-        text: 'sorry! this command is only for admins'
-      });
-      return;
-    }
-
-    // get all users with their linked requests
-    const allUsers = await base('Users').select({
-      fields: ['Display Name', 'Slack ID', 'Coins', 'Coin Requests']
-    }).all();
-
-    let adminText = `*ALL USERS WITH LINKED REQUESTS*\n\n`;
-    
-    for (const user of allUsers) {
-      const userName = user.get('Display Name') || 'Unknown';
-      const userCoins = user.get('Coins') || 0;
-      const linkedRequests = user.get('Coin Requests') || [];
-      
-      adminText += `*${userName}* (${userCoins} coins, ${linkedRequests.length} requests)\n`;
-      
-      if (linkedRequests.length > 0) {
-        // get details of linked requests
-        const requestDetails = await base('Coin Requests').select({
-          filterByFormula: `RECORD_ID() = '${linkedRequests.join("' OR RECORD_ID() = '")}'`
-        }).all();
-        
-        requestDetails.forEach(request => {
-          const action = request.get('Action');
-          const status = request.get('Status');
-          const coins = request.get('Coins Given') || 'N/A';
-          adminText += `  - ${action} (${status}, ${coins} coins)\n`;
-        });
-      }
-      adminText += `\n`;
-    }
-
-    await client.chat.postMessage({
-      channel: slackId,
-      text: adminText
-    });
-
-  } catch (error) {
-    // send error message if admin requests fails to load
-    try {
-      await client.chat.postMessage({
-        channel: body.user_id,
-        text: 'sorry! zorp couldn\'t load admin requests, pls check the logs'
       });
     } catch (dmError) {
     }
