@@ -22,8 +22,8 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
 // define all the stickersheet types and their requirements
 const STICKERSHEET_CONFIG = {
   stickersheet1: { name: 'PLANET STICKERSHEET', cost: 25, description: 'starter stickersheet' },
-  stickersheet2: { name: 'GALAXY STICKERSHEET', cost: 60, description: 'premium stickersheet', requires: 'PLANET STICKERSHEET' },
-  stickersheet3: { name: 'UNIVERSE STICKERSHEET', cost: 105, description: 'ultimate stickersheet', requires: 'GALAXY STICKERSHEET' }
+  stickersheet2: { name: 'GALAXY STICKERSHEET', cost: 35, description: 'premium stickersheet', requires: 'PLANET STICKERSHEET' },
+  stickersheet3: { name: 'UNIVERSE STICKERSHEET', cost: 45, description: 'ultimate stickersheet', requires: 'GALAXY STICKERSHEET' }
 };
 
 // define all the activities users can do to earn coins
@@ -382,8 +382,8 @@ app.command('/shop', async ({ ack, body, client }) => {
     const hasGalaxy = currentStickersheets.includes('GALAXY STICKERSHEET');
     
     const canBuyPlanet = currentCoins >= 25;
-    const canBuyGalaxy = hasPlanet && currentCoins >= 60;
-    const canBuyUniverse = hasGalaxy && currentCoins >= 105;
+    const canBuyGalaxy = hasPlanet && currentCoins >= 35;
+    const canBuyUniverse = hasGalaxy && currentCoins >= 45;
 
     // create the dropdown options for stickersheets
     const stickersheetOptions = Object.entries(STICKERSHEET_CONFIG).map(([key, config]) => {
@@ -400,13 +400,13 @@ app.command('/shop', async ({ ack, body, client }) => {
         case 'stickersheet2':
           canBuy = canBuyGalaxy;
           if (!canBuy) {
-            description = 'need PLANET stickersheet + 60 coins';
+            description = 'need PLANET stickersheet + 35 coins';
           }
           break;
         case 'stickersheet3':
           canBuy = canBuyUniverse;
           if (!canBuy) {
-            description = 'need GALAXY stickersheet + 105 coins';
+            description = 'need GALAXY stickersheet + 45 coins';
           }
           break;
       }
@@ -455,7 +455,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*GALAXY STICKERSHEET - 60 coins & PLANET*'
+              text: '*GALAXY STICKERSHEET - 35 coins & PLANET*'
             },
             accessory: {
               type: 'image',
@@ -467,7 +467,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*UNIVERSE STICKERSHEET - 105 coins & GALAXY*'
+              text: '*UNIVERSE STICKERSHEET - 45 coins & GALAXY*'
             },
             accessory: {
               type: 'image',
@@ -571,8 +571,11 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
       return;
     }
 
-    // process the purchase - add stickersheet (no coin deduction)
-    await addStickersheet(slackId, selectedStickersheet);
+    // process the purchase - deduct coins and add stickersheet
+    await Promise.all([
+      deductCoins(slackId, config.cost),
+      addStickersheet(slackId, selectedStickersheet)
+    ]);
 
     // get updated user data for confirmation message
     const newBalance = await getUserCoins(slackId);
@@ -582,8 +585,8 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
     const purchaseMessages = [
       `${config.name} acquired! you now have ${newBalance} coins and ${newStickersheets} stickersheets!`,
       `yay! ${config.name} purchased! your balance: ${newBalance} coins, stickersheets: ${newStickersheets}`,
-      `woo! you got ${config.name}! total coins: ${newBalance}, total stickersheets: ${newStickersheets}`,
-      `amazing! ${config.name} purchased! you have ${newBalance} coins and ${newStickersheets} stickersheets now!`
+      `woo! you got ${config.name}! coins remaining: ${newBalance}, total stickersheets: ${newStickersheets}`,
+      `amazing! ${config.name} purchased! you have ${newBalance} coins left and ${newStickersheets} stickersheets now!`
     ];
 
     // send confirmation message to user
