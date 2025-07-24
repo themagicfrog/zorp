@@ -35,7 +35,7 @@ const COIN_ACTIONS = [
   { label: 'Attend an event', value: 'Attend Event', coins: 3 },
   { label: 'Tell a friend & post it somewhere (Reddit, Discord, etc.)', value: 'Share', coins: 3 },
   { label: 'Post a Jumpstart poster somewhere', value: 'Poster', coins: 2 },
-  { label: 'Host an event (write note for coin #)', value: 'Host Event', coins: 5 },
+  { label: 'Host an event (write note for coin #)', value: 'Host Event', coins: null },
   { label: 'Record game explanation and process (face+voice)', value: 'Record', coins: 10 },
   { label: 'Draw/make all assets', value: 'Create Assets', coins: 15 },
   { label: 'Help someone fix a problem in their game (write note for coin #)', value: 'Fix Problem', coins: null },
@@ -108,6 +108,24 @@ async function updateUserCoins(slackId) {
       ]);
     }
   } catch (error) {
+  }
+}
+
+// update all users' coin totals (can be called periodically)
+async function updateAllUserCoins() {
+  try {
+    // get all users
+    const allUsers = await base('Users').select().all();
+    
+    // update each user's coin count
+    for (const userRecord of allUsers) {
+      const slackId = userRecord.get('Slack ID');
+      if (slackId) {
+        await updateUserCoins(slackId);
+      }
+    }
+  } catch (error) {
+    console.error('Error updating all user coins:', error);
   }
 }
 
@@ -352,6 +370,9 @@ app.command('/shop', async ({ ack, body, client }) => {
     const slackId = body.user_id;
     const triggerId = body.trigger_id;
 
+    // automatically update user's coin count before showing shop
+    await updateUserCoins(slackId);
+
     // get user's current coins and stickersheets
     const currentCoins = await getUserCoins(slackId);
     const currentStickersheets = await getUserStickersheetsList(slackId);
@@ -590,6 +611,9 @@ app.command('/leaderboard', async ({ ack, body, client }) => {
     
     const slackId = body.user_id;
 
+    // automatically update the current user's coin count before showing leaderboard
+    await updateUserCoins(slackId);
+
     // get all users sorted by coins (highest first)
     const allUsers = await base('Users').select({
       sort: [{ field: 'Coins', direction: 'desc' }]
@@ -653,6 +677,24 @@ receiver.app.get('/health', (req, res) => {
 
 receiver.app.get('/ping', (req, res) => {
   res.status(200).send('pong');
+});
+
+// endpoint to manually trigger coin updates for all users
+receiver.app.get('/update-coins', async (req, res) => {
+  try {
+    await updateAllUserCoins();
+    res.status(200).json({
+      status: 'success',
+      message: 'All user coin counts updated',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to update coin counts',
+      error: error.message
+    });
+  }
 });
 
 // start the server on the specified port
