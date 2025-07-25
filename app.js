@@ -519,6 +519,12 @@ app.command('/shop', async ({ ack, body, client }) => {
   }
 });
 
+// handle when user clicks okay on the what modal
+app.view('what_modal', async ({ ack }) => {
+  await ack();
+  // Modal closes automatically when ack is called
+});
+
 // handle when user submits the shop form to buy a stickersheet
 app.view('shop_modal', async ({ ack, view, body, client }) => {
   try {
@@ -603,6 +609,152 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
         text: 'sorry! zappy couldn\'t process your purchase, pls ask @magic frog for help'
       });
     } catch (dmError) {
+    }
+  }
+});
+
+// handle the /what command - shows detailed explanations of all activities
+app.command('/what', async ({ ack, body, client }) => {
+  try {
+    await ack();
+    const triggerId = body.trigger_id;
+
+    // open a modal with detailed activity explanations
+    await client.views.open({
+      trigger_id: triggerId,
+      view: {
+        type: 'modal',
+        callback_id: 'what_modal',
+        title: { type: 'plain_text', text: 'WHAT CAN I DO?' },
+        submit: { type: 'plain_text', text: 'okay' },
+        close: { type: 'plain_text', text: 'close' },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*here are all the things you can do to earn coins!* '
+            }
+          },
+          {
+            type: 'divider'
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*💬 Comment (1 coin)*\n• something meaningful in someone else\'s game thread\n• do you have specific feedback on how they can make it better?\n• does their game remind you of another game?\n• is there a specific thing you really like about it?\n• "cool game" or "nice" doesn\'t count'
+            }
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*👥 Huddle (2 coins)*\n• and work on your game in #jumpstart\n• join a huddle and work for at least 30 minutes\n• ideally have your video on\n• be talking about your game to others\n• actively working on your game\n• sitting in a huddle watching reels doesn\'t count\n• post a message after saying what you got done'
+            }
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*🎮 Post (3 coins)*\n• your game idea!\n• first step to making your game is to get your idea'
+            }
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*📅 Attend Event (3 coins)*\n• and post a summary message of what you learned during it or what you did\n• ex. workshops, jumpstartathons, playtest parties etc'
+            }
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*📝 Update (1 coin)*\n• there is a minimum of 1 update at 10 hours, but you are encouraged to update more often too\n• make sure it is in your game thread and send to channel\n• includes roughly what you did/learned/whats next\n• add a screen recording or image to your message'
+            }
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*📢 Share (3 coins)*\n• Jumpstart to your friends, family, or other communities you are part of (school, Discord, Reddit, your Insta)\n• because more people should know about Jumpstart\n• post a picture in #jumpstart proving that you did it'
+            }
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*🎯 Host Event (variable coins)*\n• host an online event for Jumpstarters to go too\n• coin amount will vary on the event type you host, how many people go, and what they get out of it\n• starting a huddle counts!\n• ideas include but aren\'t limited to:\n  • idea brainstorm meeting\n  • weekend jumpstart lock in\n  • playtest party for people to test out each other\'s games\n  • workshops for a cool feature you want to show others how to add to their game\n• if you have an idea, please add it to the proposed events section in the Events canvas and tag me'
+            }
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*🖼️ Poster (2 coins)*\n• print out our amazing Jumpstart poster and post it up somewhere anywhere near where you live\n• take a picture once you put it up and send to #jumpstart'
+            }
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*🎥 Record (10 coins)*\n• Jumpstart was on Hack Club\'s instagram and you can be featured on HC\'s instagram too!\n• record yourself with face and voice talking about your game:\n  • your name, age, and where you\'re from\n  • what inspired you to make your game\n  • is this your first time with game dev\n  • whats challenging, surprising, easy, fun about it\n  • what you are currently working on adding to it\n  • what you plan to do next with your game\n  • record a timelapse of you working\n  • literally anything else, the more the merrier'
+            }
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*🎨 Create Assets (15 coins)*\n• if you create all the assets you use in your game (music and art) YOU ARE SO COOL\n• they don\'t have to be the most perfect, but you should make all your game assets!!\n• it would be epic'
+            }
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*🔧 Fix Problem (variable coins)*\n• there are a lot of beginners and experienced people here and people will be running into problems\n• help someone debug and solve an issue they have in their game\n• coin amount will vary based on the problem and how much you helped'
+            }
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*📋 Task (PR) (variable coins)*\n• Jumpstart is a living growing thing and there will be tasks to make\n• i might give out a coin bounty for something to do once in a while'
+            }
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*🤝 IRL Meetup (25 coins)*\n• there are Jumpstarters from all over the world here!!\n• find someone who lives in the same town as you, find a time and place to meetup and work on your game together!\n• take a selfie and post in #jumpstart and write about what you got done, timelapse?'
+            }
+          },
+          {
+            type: 'divider'
+          },
+          {
+            type: 'context',
+            elements: [
+              {
+                type: 'mrkdwn',
+                text: 'ready to collect some coins? use `/collect` to submit your activity!'
+              }
+            ]
+          }
+        ]
+      }
+    });
+  } catch (error) {
+    console.error('Error in /what command:', error);
+    // Send error message to user if modal fails to open
+    try {
+      await client.chat.postMessage({
+        channel: body.user_id,
+        text: 'oopsies! zorp couldn\'t open the activity guide, pls try again or ask @magic frog for help'
+      });
+    } catch (dmError) {
+      console.error('Error sending error DM:', dmError);
     }
   }
 });
