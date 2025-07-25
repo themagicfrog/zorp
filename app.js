@@ -241,13 +241,28 @@ async function canUserDoAction(slackId, action) {
   }
 }
 
-// get remaining times user can do each action
+// get remaining times user can do each action - optimized with single query
 async function getUserActionRemaining(slackId) {
   try {
+    // Get all approved requests for this user in one query
+    const approvedRequests = await base('Coin Requests').select({
+      filterByFormula: `AND({Slack ID} = '${slackId}', {Status} = 'Approved')`
+    }).all();
+
+    // Count each action type
+    const actionCounts = {};
+    approvedRequests.forEach(record => {
+      const action = record.get('Action');
+      if (action) {
+        actionCounts[action] = (actionCounts[action] || 0) + 1;
+      }
+    });
+
+    // Calculate remaining for each action
     const remaining = {};
     for (const action of COIN_ACTIONS) {
       if (action.max) {
-        const currentCount = await getUserActionCount(slackId, action.value);
+        const currentCount = actionCounts[action.value] || 0;
         remaining[action.value] = Math.max(0, action.max - currentCount);
       }
     }
@@ -278,8 +293,18 @@ app.command('/collect', async ({ ack, body, client }) => {
       "welcome to the coin collection station! zorppy is here",
     ];
 
-    // get user's remaining action counts
-    const actionRemaining = await getUserActionRemaining(slackId);
+    // get user's remaining action counts with timeout
+    let actionRemaining = {};
+    try {
+      actionRemaining = await withTimeout(getUserActionRemaining(slackId), 5000);
+    } catch (timeoutError) {
+      console.error('Timeout getting action remaining:', timeoutError);
+      // Fallback to showing all actions if timeout
+      actionRemaining = {};
+      COIN_ACTIONS.forEach(a => {
+        if (a.max) actionRemaining[a.value] = a.max;
+      });
+    }
 
     // create options with remaining counts - only show available actions
     const options = COIN_ACTIONS.map(a => {
