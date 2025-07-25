@@ -69,7 +69,7 @@ async function getOrCreateUser(slackId, displayName) {
         fields: {
           'Slack ID': slackId,
           'Display Name': displayName,
-          'Coins': 0
+          'Coins': 1
         }
       }
     ]);
