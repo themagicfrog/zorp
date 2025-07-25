@@ -129,6 +129,66 @@ async function updateAllUserCoins() {
   }
 }
 
+// process approved coin requests and update user balances
+async function processApprovedCoinRequests() {
+  try {
+    // get all approved coin requests that haven't been added yet
+    const approvedRequests = await base('Coin Requests').select({
+      filterByFormula: `AND({Status} = 'Approved', {Added?} != 1)`
+    }).all();
+
+    let processedCount = 0;
+    let totalCoinsAdded = 0;
+
+    for (const request of approvedRequests) {
+      const slackId = request.get('Slack ID');
+      const coinsGiven = request.get('Coins Given');
+      const displayName = request.get('Display Name');
+
+      if (!slackId || !coinsGiven || typeof coinsGiven !== 'number') {
+        console.log(`Skipping request ${request.id}: missing slackId or invalid coins`);
+        continue;
+      }
+
+      try {
+        // get or create the user
+        const userRecord = await getOrCreateUser(slackId, displayName);
+        const currentCoins = userRecord.get('Coins') || 0;
+        const newCoins = currentCoins + coinsGiven;
+
+        // update the user's coin balance
+        await base('Users').update([
+          {
+            id: userRecord.id,
+            fields: { 'Coins': newCoins }
+          }
+        ]);
+
+        // mark the request as added
+        await base('Coin Requests').update([
+          {
+            id: request.id,
+            fields: { 'Added?': true }
+          }
+        ]);
+
+        processedCount++;
+        totalCoinsAdded += coinsGiven;
+
+        console.log(`Processed request ${request.id}: ${displayName} +${coinsGiven} coins (new total: ${newCoins})`);
+
+      } catch (error) {
+        console.error(`Error processing request ${request.id}:`, error);
+      }
+    }
+
+    return { processedCount, totalCoinsAdded };
+  } catch (error) {
+    console.error('Error processing approved coin requests:', error);
+    throw error;
+  }
+}
+
 // get how many coins a user currently has
 async function getUserCoins(slackId) {
   try {
@@ -965,6 +1025,56 @@ app.command('/speak', async ({ ack, body, client }) => {
       await client.chat.postMessage({
         channel: body.user_id,
         text: 'oopsies! zorp couldn\'t open the speak form, pls try again'
+      });
+    } catch (dmError) {
+      console.error('Error sending error DM:', dmError);
+    }
+  }
+});
+
+// handle the /update-coins command - allows specific user to process approved coin requests
+app.command('/update-coins', async ({ ack, body, client }) => {
+  try {
+    await ack();
+    
+    // check if the user is authorized (only U06UYA4AH6F can use this command)
+    if (body.user_id !== 'U06UYA4AH6F') {
+      await client.chat.postMessage({
+        channel: body.user_id,
+        text: 'why are you trying to update coins? i\'m not a robot!'
+      });
+      return;
+    }
+
+    // send initial message
+    await client.chat.postMessage({
+      channel: body.user_id,
+      text: 'beep beep boop! processing approved coin requests...'
+    });
+
+    // process the approved coin requests
+    const result = await processApprovedCoinRequests();
+
+    // send results
+    if (result.processedCount > 0) {
+      await client.chat.postMessage({
+        channel: body.user_id,
+        text: `✅ processed ${result.processedCount} approved requests and added ${result.totalCoinsAdded} total coins to users! beep beep boop!`
+      });
+    } else {
+      await client.chat.postMessage({
+        channel: body.user_id,
+        text: 'no new approved requests to process! all caught up!'
+      });
+    }
+
+  } catch (error) {
+    console.error('Error in /update-coins command:', error);
+    // Send error message to user
+    try {
+      await client.chat.postMessage({
+        channel: body.user_id,
+        text: 'oopsies! zorp couldn\'t process the coin requests, pls try again'
       });
     } catch (dmError) {
       console.error('Error sending error DM:', dmError);
