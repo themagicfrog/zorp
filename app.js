@@ -317,7 +317,7 @@ app.command('/collect', async ({ ack, body, client }) => {
         text += ` (${a.coins}c)`;
       }
       if (canDo) {
-        text += ` - ${remaining} left`;
+        text += ` - ${a.max} max`;
       } else {
         text += ` - MAXED`;
       }
