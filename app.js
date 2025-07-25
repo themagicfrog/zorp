@@ -281,20 +281,42 @@ app.command('/collect', async ({ ack, body, client }) => {
     // get user's remaining action counts
     const actionRemaining = await getUserActionRemaining(slackId);
 
-    // create options with remaining counts
+    // create options with remaining counts - only show available actions
     const options = COIN_ACTIONS.map(a => {
       const remaining = actionRemaining[a.value] || 0;
       const canDo = remaining > 0;
-      const text = canDo 
-        ? `${a.label}${a.coins ? ` (${a.coins} coins)` : ''} - ${remaining} left`
-        : `${a.label}${a.coins ? ` (${a.coins} coins)` : ''} - MAXED OUT`;
+      
+      // Create shorter text to avoid 76 character limit
+      let text = a.label;
+      if (a.coins) {
+        text += ` (${a.coins}c)`;
+      }
+      if (canDo) {
+        text += ` - ${remaining} left`;
+      } else {
+        text += ` - MAXED`;
+      }
+      
+      // Truncate if still too long
+      if (text.length > 75) {
+        text = text.substring(0, 72) + '...';
+      }
       
       return {
         text: { type: 'plain_text', text },
         value: a.value,
-        disabled: !canDo
+        canDo: canDo
       };
-    });
+    }).filter(option => option.canDo).map(({ text, value }) => ({ text, value }));
+
+    // check if user has any available actions
+    if (options.length === 0) {
+      await client.chat.postMessage({
+        channel: slackId,
+        text: 'wow! you\'ve completed all the available actions! 🎉 you\'re a coin collection master!'
+      });
+      return;
+    }
 
     // open a form for the user to fill out
     await client.views.open({
