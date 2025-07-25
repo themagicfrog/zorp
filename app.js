@@ -910,6 +910,115 @@ app.command('/what', async ({ ack, body, client }) => {
   }
 });
 
+// handle the /speak command - allows specific user to send messages to #jumpstart
+app.command('/speak', async ({ ack, body, client }) => {
+  try {
+    await ack();
+    
+    // check if the user is authorized (only U06UYA4AH6F can use this command)
+    if (body.user_id !== 'U06UYA4AH6F') {
+      await client.chat.postMessage({
+        channel: body.user_id,
+        text: 'why are you trying to make me say something? i\'m not a robot!'
+      });
+      return;
+    }
+
+    const triggerId = body.trigger_id;
+
+    // open a form for the user to fill out
+    await client.views.open({
+      trigger_id: triggerId,
+      view: {
+        type: 'modal',
+        callback_id: 'speak_modal',
+        title: { type: 'plain_text', text: 'ZORP SPEAK' },
+        submit: { type: 'plain_text', text: 'send message' },
+        close: { type: 'plain_text', text: 'cancel' },
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'plain_text',
+              text: 'beep beep boop! what would you like zorp to say to #jumpstart?',
+              emoji: true
+            }
+          },
+          {
+            type: 'input',
+            block_id: 'message_block',
+            label: { type: 'plain_text', text: 'message to send' },
+            element: {
+              type: 'plain_text_input',
+              action_id: 'message_input',
+              placeholder: { type: 'plain_text', text: 'type your message here...' },
+              multiline: true
+            }
+          }
+        ]
+      }
+    });
+  } catch (error) {
+    console.error('Error in /speak command:', error);
+    // Send error message to user if modal fails to open
+    try {
+      await client.chat.postMessage({
+        channel: body.user_id,
+        text: 'oopsies! zorp couldn\'t open the speak form, pls try again'
+      });
+    } catch (dmError) {
+      console.error('Error sending error DM:', dmError);
+    }
+  }
+});
+
+// handle when user submits the speak form
+app.view('speak_modal', async ({ ack, view, body, client }) => {
+  try {
+    await ack();
+
+    // check if the user is authorized
+    if (body.user.id !== 'U06UYA4AH6F') {
+      return;
+    }
+
+    // get the message from the form
+    const message = view.state.values['message_block']['message_input'].value || '';
+
+    if (!message.trim()) {
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: 'you need to type a message first!'
+      });
+      return;
+    }
+
+    // send the message to #jumpstart channel
+    await client.chat.postMessage({
+      channel: '#jumpstart',
+      text: message
+    });
+
+    // send confirmation to the user
+    await client.chat.postMessage({
+      channel: body.user.id,
+      text: 'message sent to #jumpstart! beep beep boop!'
+    });
+
+  } catch (error) {
+    console.error('Error in speak modal submission:', error);
+    // send error message if message fails to send
+    try {
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: 'sorry! zorp couldn\'t send your message, pls try again'
+      });
+    } catch (dmError) {
+      console.error('Error sending error DM:', dmError);
+    }
+  }
+});
+
 // handle the /leaderboard command - shows top users by coin count
 app.command('/leaderboard', async ({ ack, body, client }) => {
   try {
