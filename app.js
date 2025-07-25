@@ -28,19 +28,19 @@ const STICKERSHEET_CONFIG = {
 
 // define all the activities users can do to earn coins
 const COIN_ACTIONS = [
-  { label: 'Comment something meaningful on another game', value: 'Comment', coins: 1 },
-  { label: 'Post a progress update', value: 'Update', coins: 1 },
-  { label: 'Work in a huddle on your game', value: 'Huddle', coins: 2 },
-  { label: 'Post your game idea', value: 'Post', coins: 3 },
-  { label: 'Attend an event', value: 'Attend Event', coins: 3 },
-  { label: 'Tell a friend & post it somewhere (Reddit, Discord, etc.)', value: 'Share', coins: 3 },
-  { label: 'Post a Jumpstart poster somewhere', value: 'Poster', coins: 2 },
-  { label: 'Host an event (write note for coin #)', value: 'Host Event', coins: null },
-  { label: 'Record game explanation and process (face+voice)', value: 'Record', coins: 10 },
-  { label: 'Draw/make all assets', value: 'Create Assets', coins: 15 },
-  { label: 'Help someone fix a problem in their game (write note for coin #)', value: 'Fix Problem', coins: null },
-  { label: 'Open PR & do a task (write note for coin #)', value: 'Task (PR)', coins: null },
-  { label: 'Meetup w/ a Jumpstarter IRL', value: 'IRL Meetup', coins: 25 }
+  { label: 'Comment something meaningful on another game', value: 'Comment', coins: 1, max: 10 },
+  { label: 'Post a progress update', value: 'Update', coins: 1, max: 10 },
+  { label: 'Work in a huddle on your game', value: 'Huddle', coins: 2, max: 10 },
+  { label: 'Post your game idea', value: 'Post', coins: 3, max: 1 },
+  { label: 'Attend an event', value: 'Attend Event', coins: 3, max: 10 },
+  { label: 'Tell a friend & post it somewhere (Reddit, Discord, etc.)', value: 'Share', coins: 3, max: 3 },
+  { label: 'Post a Jumpstart poster somewhere', value: 'Poster', coins: 2, max: 3 },
+  { label: 'Host an event (write note for coin #)', value: 'Host Event', coins: null, max: 10 },
+  { label: 'Record game explanation and process (face+voice)', value: 'Record', coins: 10, max: 1 },
+  { label: 'Draw/make all assets', value: 'Create Assets', coins: 15, max: 1 },
+  { label: 'Help someone fix a problem in their game (write note for coin #)', value: 'Fix Problem', coins: null, max: 10 },
+  { label: 'Open PR & do a task (write note for coin #)', value: 'Task (PR)', coins: null, max: 10 },
+  { label: 'Meetup w/ a Jumpstarter IRL', value: 'IRL Meetup', coins: 25, max: 1 }
 ];
 
 // helper function to get a user's record from airtable
@@ -214,6 +214,50 @@ async function getUserStickersheets(slackId) {
   }
 }
 
+// get how many times a user has done a specific action
+async function getUserActionCount(slackId, action) {
+  try {
+    const approvedRequests = await base('Coin Requests').select({
+      filterByFormula: `AND({Slack ID} = '${slackId}', {Action} = '${action}', {Status} = 'Approved')`
+    }).all();
+    return approvedRequests.length;
+  } catch (error) {
+    console.error('Error getting user action count:', error);
+    return 0;
+  }
+}
+
+// check if user can still do a specific action
+async function canUserDoAction(slackId, action) {
+  try {
+    const actionConfig = COIN_ACTIONS.find(a => a.value === action);
+    if (!actionConfig || !actionConfig.max) return true; // No limit set
+    
+    const currentCount = await getUserActionCount(slackId, action);
+    return currentCount < actionConfig.max;
+  } catch (error) {
+    console.error('Error checking if user can do action:', error);
+    return true; // Allow if there's an error
+  }
+}
+
+// get remaining times user can do each action
+async function getUserActionRemaining(slackId) {
+  try {
+    const remaining = {};
+    for (const action of COIN_ACTIONS) {
+      if (action.max) {
+        const currentCount = await getUserActionCount(slackId, action.value);
+        remaining[action.value] = Math.max(0, action.max - currentCount);
+      }
+    }
+    return remaining;
+  } catch (error) {
+    console.error('Error getting user action remaining:', error);
+    return {};
+  }
+}
+
 // helper function to pick a random message from a list
 function getRandomMessage(messages) {
   return messages[Math.floor(Math.random() * messages.length)];
@@ -224,6 +268,7 @@ app.command('/collect', async ({ ack, body, client }) => {
   try {
     await ack();
     const triggerId = body.trigger_id;
+    const slackId = body.user_id;
 
     // list of random welcome messages
     const welcomeMessages = [
@@ -232,6 +277,24 @@ app.command('/collect', async ({ ack, body, client }) => {
       "greetings human (or whatever they say), are you ready to collect some coins?",
       "welcome to the coin collection station! zorppy is here",
     ];
+
+    // get user's remaining action counts
+    const actionRemaining = await getUserActionRemaining(slackId);
+
+    // create options with remaining counts
+    const options = COIN_ACTIONS.map(a => {
+      const remaining = actionRemaining[a.value] || 0;
+      const canDo = remaining > 0;
+      const text = canDo 
+        ? `${a.label}${a.coins ? ` (${a.coins} coins)` : ''} - ${remaining} left`
+        : `${a.label}${a.coins ? ` (${a.coins} coins)` : ''} - MAXED OUT`;
+      
+      return {
+        text: { type: 'plain_text', text },
+        value: a.value,
+        disabled: !canDo
+      };
+    });
 
     // open a form for the user to fill out
     await client.views.open({
@@ -259,10 +322,7 @@ app.command('/collect', async ({ ack, body, client }) => {
               type: 'static_select',
               action_id: 'action_selected',
               placeholder: { type: 'plain_text', text: 'select an action' },
-              options: COIN_ACTIONS.map(a => ({
-                text: { type: 'plain_text', text: `${a.label}${a.coins ? ` (${a.coins} coins)` : ''}` },
-                value: a.value
-              }))
+              options: options
             }
           },
           {
@@ -290,6 +350,16 @@ app.command('/collect', async ({ ack, body, client }) => {
       }
     });
   } catch (error) {
+    console.error('Error in /collect command:', error);
+    // Send error message to user if modal fails to open
+    try {
+      await client.chat.postMessage({
+        channel: body.user_id,
+        text: 'oopsies! zorp couldn\'t open the collection form, pls try again or ask @magic frog for help'
+      });
+    } catch (dmError) {
+      console.error('Error sending error DM:', dmError);
+    }
   }
 });
 
@@ -304,6 +374,19 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
     const requestNote = view.state.values['request_note_block']['request_note_input'].value || '';
     const slackId = body.user.id;
     const now = new Date().toISOString().split('T')[0];
+
+    // check if user has reached the maximum for this action
+    const canDoAction = await canUserDoAction(slackId, action);
+    if (!canDoAction) {
+      const actionConfig = COIN_ACTIONS.find(a => a.value === action);
+      const currentCount = await getUserActionCount(slackId, action);
+      
+      await client.chat.postMessage({
+        channel: slackId,
+        text: `sorry! you've already done "${actionConfig.label}" ${currentCount} times (max ${actionConfig.max}). you can't do this action anymore!`
+      });
+      return;
+    }
 
     // try to get the user's display name from slack
     let displayName = body.user.name;
@@ -376,6 +459,7 @@ app.command('/shop', async ({ ack, body, client }) => {
     // get user's current coins and stickersheets
     const currentCoins = await getUserCoins(slackId);
     const currentStickersheets = await getUserStickersheetsList(slackId);
+    const actionRemaining = await getUserActionRemaining(slackId);
 
     // check what stickersheets they can buy based on progression
     const hasPlanet = currentStickersheets.includes('PLANET STICKERSHEET');
@@ -502,6 +586,26 @@ app.command('/shop', async ({ ack, body, client }) => {
                   : 'you need more coins to buy a stickersheet. keep collecting!'
               }
             ]
+          },
+          {
+            type: 'divider'
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*your remaining actions:*\n' + 
+                Object.entries(actionRemaining)
+                  .filter(([action, remaining]) => remaining > 0)
+                  .map(([action, remaining]) => {
+                    const actionConfig = COIN_ACTIONS.find(a => a.value === action);
+                    return `• ${actionConfig.label} - ${remaining} left`;
+                  })
+                  .join('\n') + 
+                (Object.values(actionRemaining).every(count => count === 0) 
+                  ? '\n• all actions completed!' 
+                  : '')
+            }
           }
         ]
       }
