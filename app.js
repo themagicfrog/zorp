@@ -132,9 +132,9 @@ async function updateAllUserCoins() {
 // process approved coin requests and update user balances
 async function processApprovedCoinRequests() {
   try {
-    // get all approved coin requests that haven't been added yet
+    // get all approved coin requests that haven't been processed yet
     const approvedRequests = await base('Coin Requests').select({
-      filterByFormula: `AND({Status} = 'Approved', {Added?} != 1)`
+      filterByFormula: `AND({Status} = 'Approved', {Processed?} != 1)`
     }).all();
 
     let processedCount = 0;
@@ -164,11 +164,11 @@ async function processApprovedCoinRequests() {
           }
         ]);
 
-        // mark the request as added
+        // mark the request as processed
         await base('Coin Requests').update([
           {
             id: request.id,
-            fields: { 'Added?': true }
+            fields: { 'Processed?': true }
           }
         ]);
 
@@ -185,6 +185,41 @@ async function processApprovedCoinRequests() {
     return { processedCount, totalCoinsAdded };
   } catch (error) {
     console.error('Error processing approved coin requests:', error);
+    throw error;
+  }
+}
+
+// process declined coin requests and mark them as processed
+async function processDeclinedCoinRequests() {
+  try {
+    // get all declined coin requests that haven't been processed yet
+    const declinedRequests = await base('Coin Requests').select({
+      filterByFormula: `AND({Status} = 'Declined', {Processed?} != 1)`
+    }).all();
+
+    let processedCount = 0;
+
+    for (const request of declinedRequests) {
+      try {
+        // mark the request as processed
+        await base('Coin Requests').update([
+          {
+            id: request.id,
+            fields: { 'Processed?': true }
+          }
+        ]);
+
+        processedCount++;
+        console.log(`Processed declined request ${request.id}`);
+
+      } catch (error) {
+        console.error(`Error processing declined request ${request.id}:`, error);
+      }
+    }
+
+    return { processedCount };
+  } catch (error) {
+    console.error('Error processing declined coin requests:', error);
     throw error;
   }
 }
@@ -1049,24 +1084,34 @@ app.command('/update-coins', async ({ ack, body, client }) => {
     // send initial message
     await client.chat.postMessage({
       channel: body.user_id,
-      text: 'beep beep boop! processing approved coin requests...'
+      text: 'beep beep boop! processing coin requests...'
     });
 
-    // process the approved coin requests
-    const result = await processApprovedCoinRequests();
+    // process both approved and declined coin requests
+    const [approvedResult, declinedResult] = await Promise.all([
+      processApprovedCoinRequests(),
+      processDeclinedCoinRequests()
+    ]);
 
     // send results
-    if (result.processedCount > 0) {
-      await client.chat.postMessage({
-        channel: body.user_id,
-        text: `✅ processed ${result.processedCount} approved requests and added ${result.totalCoinsAdded} total coins to users! beep beep boop!`
-      });
+    let message = '';
+    if (approvedResult.processedCount > 0 || declinedResult.processedCount > 0) {
+      message = '✅ processed:';
+      if (approvedResult.processedCount > 0) {
+        message += `\n• ${approvedResult.processedCount} approved requests (+${approvedResult.totalCoinsAdded} coins)`;
+      }
+      if (declinedResult.processedCount > 0) {
+        message += `\n• ${declinedResult.processedCount} declined requests`;
+      }
+      message += '\nbeep beep boop!';
     } else {
-      await client.chat.postMessage({
-        channel: body.user_id,
-        text: 'no new approved requests to process! all caught up!'
-      });
+      message = 'no new requests to process! all caught up!';
     }
+
+    await client.chat.postMessage({
+      channel: body.user_id,
+      text: message
+    });
 
   } catch (error) {
     console.error('Error in /update-coins command:', error);
