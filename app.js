@@ -373,6 +373,119 @@ function getRandomMessage(messages) {
   return messages[Math.floor(Math.random() * messages.length)];
 }
 
+// function to post leaderboard to #jumpstart channel
+async function postDailyLeaderboard() {
+  try {
+    // get all users sorted by coins (highest first)
+    const allUsers = await base('Users').select({
+      sort: [{ field: 'Coins', direction: 'desc' }]
+    }).all();
+
+    // get the top 10 users
+    const top10Users = allUsers.slice(0, 10);
+
+    // build the leaderboard message
+    let leaderboardText = '*DAILY COIN LEADERBOARD*\n\n';
+    
+    // add each top user to the message
+    top10Users.forEach((user, index) => {
+      const position = index + 1;
+      const displayName = user.get('Display Name') || 'Unknown';
+      const coins = user.get('Coins') || 0;
+      
+      // add emojis for top 3 positions
+      let emoji = '';
+      if (position === 1) emoji = '🥇';
+      else if (position === 2) emoji = '🥈';
+      else if (position === 3) emoji = '🥉';
+      else emoji = `${position}.`;
+      
+      leaderboardText += `${emoji} *${displayName}* - *${coins} coins*\n`;
+    });
+
+    // add total participants count
+    leaderboardText += `\n*${allUsers.length} total jumpstarters competing!* `;
+
+    // list of random leaderboard messages
+    const leaderboardMessages = [
+      "beep beep boop! here's today's coin leaderboard!",
+      "the cows are mooing! time for the daily leaderboard!",
+      "greetings earthlings! check out today's coin rankings!",
+      "wahoo! it's leaderboard time! see who's collecting the most coins!",
+    ];
+
+    // post to #jumpstart channel
+    await app.client.chat.postMessage({
+      channel: '#jumpstart',
+      text: getRandomMessage(leaderboardMessages),
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: getRandomMessage(leaderboardMessages)
+          }
+        },
+        {
+          type: 'divider'
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: leaderboardText
+          }
+        },
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: 'top 3 get a special prize at the end!\nwant to see your position? use `/leaderboard` to check your ranking!'
+            }
+          ]
+        }
+      ]
+    });
+
+    console.log('Daily leaderboard posted successfully');
+  } catch (error) {
+    console.error('Error posting daily leaderboard:', error);
+  }
+}
+
+// schedule daily leaderboard posting at 8:50 PM EST
+function scheduleDailyLeaderboard() {
+  // Calculate time until next 8:50 PM EST
+  const now = new Date();
+  const estOffset = -5; // EST is UTC-5
+  const estTime = new Date(now.getTime() + (estOffset * 60 * 60 * 1000));
+  
+  // Set target time to 8:50 PM EST
+  const targetTime = new Date(estTime);
+  targetTime.setHours(20, 50, 0, 0); // 8:50 PM
+  
+  // If it's already past 8:50 PM today, schedule for tomorrow
+  if (estTime.getTime() > targetTime.getTime()) {
+    targetTime.setDate(targetTime.getDate() + 1);
+  }
+  
+  // Calculate delay until target time
+  const delay = targetTime.getTime() - estTime.getTime();
+  
+  // Schedule the first leaderboard post
+  setTimeout(async () => {
+    await postDailyLeaderboard();
+    
+    // Then schedule it to run every 24 hours
+    setInterval(async () => {
+      await postDailyLeaderboard();
+    }, 24 * 60 * 60 * 1000); // 24 hours in milliseconds
+  }, delay);
+  
+  console.log(`Daily leaderboard scheduled for ${targetTime.toLocaleString()}`);
+}
+
 // handle the /collect command - opens a form for users to submit coin requests
 app.command('/collect', async ({ ack, body, client }) => {
   try {
@@ -1270,4 +1383,8 @@ receiver.app.get('/update-coins', async (req, res) => {
 // start the server on the specified port
 const port = process.env.PORT || 3000;
 receiver.app.listen(port, () => {
+  console.log(`Zorp bot is running on port ${port}`);
+  
+  // start the daily leaderboard scheduler
+  scheduleDailyLeaderboard();
 });
