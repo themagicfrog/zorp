@@ -1394,13 +1394,13 @@ app.action('claim_random_coin', async ({ ack, body, client }) => {
     await client.chat.update({
       channel: channelId,
       ts: messageTs,
-      text: `<@${slackId}> got it!`,
+      text: `there was a random coin, and <@${slackId}> got it! tomorrow there will be another one, so look out for it!`,
       blocks: [
         {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `<@${slackId}> got it!`
+            text: `there was a random coin, and <@${slackId}> got it! tomorrow there will be another one, so look out for it!`
           }
         }
       ]
