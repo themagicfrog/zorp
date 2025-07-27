@@ -373,6 +373,16 @@ function getRandomMessage(messages) {
   return messages[Math.floor(Math.random() * messages.length)];
 }
 
+// helper function to add timeout to promises
+function withTimeout(promise, timeoutMs) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout')), timeoutMs)
+    )
+  ]);
+}
+
 // function to post leaderboard to #jumpstart channel
 async function postDailyLeaderboard() {
   try {
@@ -454,18 +464,18 @@ async function postDailyLeaderboard() {
   }
 }
 
-// schedule daily leaderboard posting at 9:00 PM EST
+// schedule daily leaderboard posting at 9:10 PM EST
 function scheduleDailyLeaderboard() {
-  // Calculate time until next 9:00 PM EST
+  // Calculate time until next 9:10 PM EST
   const now = new Date();
   const estOffset = -5; // EST is UTC-5
   const estTime = new Date(now.getTime() + (estOffset * 60 * 60 * 1000));
   
-  // Set target time to 9:00 PM EST
+  // Set target time to 9:10 PM EST
   const targetTime = new Date(estTime);
-  targetTime.setHours(21, 0, 0, 0); // 9:00 PM
+  targetTime.setHours(21, 10, 0, 0); // 9:10 PM
   
-  // If it's already past 9:00 PM today, schedule for tomorrow
+  // If it's already past 9:10 PM today, schedule for tomorrow
   if (estTime.getTime() > targetTime.getTime()) {
     targetTime.setDate(targetTime.getDate() + 1);
   }
