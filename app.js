@@ -454,18 +454,18 @@ async function postDailyLeaderboard() {
   }
 }
 
-// schedule daily leaderboard posting at 8:50 PM EST
+// schedule daily leaderboard posting at 9:00 PM EST
 function scheduleDailyLeaderboard() {
-  // Calculate time until next 8:50 PM EST
+  // Calculate time until next 9:00 PM EST
   const now = new Date();
   const estOffset = -5; // EST is UTC-5
   const estTime = new Date(now.getTime() + (estOffset * 60 * 60 * 1000));
   
-  // Set target time to 8:50 PM EST
+  // Set target time to 9:00 PM EST
   const targetTime = new Date(estTime);
-  targetTime.setHours(20, 50, 0, 0); // 8:50 PM
+  targetTime.setHours(21, 0, 0, 0); // 9:00 PM
   
-  // If it's already past 8:50 PM today, schedule for tomorrow
+  // If it's already past 9:00 PM today, schedule for tomorrow
   if (estTime.getTime() > targetTime.getTime()) {
     targetTime.setDate(targetTime.getDate() + 1);
   }
@@ -484,6 +484,91 @@ function scheduleDailyLeaderboard() {
   }, delay);
   
   console.log(`Daily leaderboard scheduled for ${targetTime.toLocaleString()}`);
+}
+
+// function to post daily random coin drop
+async function postDailyRandomCoin() {
+  try {
+    // random messages for the coin drop
+    const coinMessages = [
+      "beep boop! you've seem to found a stray coin--collect it quick before someone else does!",
+      "boooop beep!! what's this? a random coin, strange. finder's keeper's, take it before someone else does!"
+    ];
+
+    const randomMessage = getRandomMessage(coinMessages);
+
+    // post to #jumpstart channel with claim button
+    const result = await app.client.chat.postMessage({
+      channel: '#jumpstart',
+      text: randomMessage,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: randomMessage
+          }
+        },
+        {
+          type: 'actions',
+          elements: [
+            {
+              type: 'button',
+              text: {
+                type: 'plain_text',
+                text: 'CLAIM',
+                emoji: true
+              },
+              style: 'primary',
+              action_id: 'claim_random_coin',
+              value: 'claim'
+            }
+          ]
+        }
+      ]
+    });
+
+    console.log('Daily random coin drop posted successfully');
+    return result.ts; // return the timestamp for tracking
+  } catch (error) {
+    console.error('Error posting daily random coin drop:', error);
+  }
+}
+
+// schedule daily random coin drop at a random time
+function scheduleDailyRandomCoin() {
+  // Calculate time until next random time (between 9 AM and 9 PM EST)
+  const now = new Date();
+  const estOffset = -5; // EST is UTC-5
+  const estTime = new Date(now.getTime() + (estOffset * 60 * 60 * 1000));
+  
+  // Generate random time between 9 AM and 9 PM EST
+  const randomHour = Math.floor(Math.random() * 12) + 9; // 9 AM to 9 PM
+  const randomMinute = Math.floor(Math.random() * 60);
+  
+  // Set target time to random time today
+  const targetTime = new Date(estTime);
+  targetTime.setHours(randomHour, randomMinute, 0, 0);
+  
+  // If it's already past the random time today, schedule for tomorrow
+  if (estTime.getTime() > targetTime.getTime()) {
+    targetTime.setDate(targetTime.getDate() + 1);
+  }
+  
+  // Calculate delay until target time
+  const delay = targetTime.getTime() - estTime.getTime();
+  
+  // Schedule the first random coin drop
+  setTimeout(async () => {
+    await postDailyRandomCoin();
+    
+    // Then schedule it to run every 24 hours
+    setInterval(async () => {
+      await postDailyRandomCoin();
+    }, 24 * 60 * 60 * 1000); // 24 hours in milliseconds
+  }, delay);
+  
+  console.log(`Daily random coin drop scheduled for ${targetTime.toLocaleString()}`);
 }
 
 // handle the /collect command - opens a form for users to submit coin requests
@@ -1240,6 +1325,91 @@ app.command('/update-coins', async ({ ack, body, client }) => {
   }
 });
 
+// handle random coin claim button click
+app.action('claim_random_coin', async ({ ack, body, client }) => {
+  try {
+    await ack();
+
+    const slackId = body.user.id;
+    const channelId = body.channel.id;
+    const messageTs = body.message.ts;
+
+    // get user info
+    let displayName = body.user.username;
+    try {
+      const userInfo = await client.users.info({ user: slackId });
+      displayName = userInfo.user.profile.display_name || userInfo.user.profile.real_name || body.user.username;
+    } catch (userError) {
+      // use fallback name if we can't get their display name
+    }
+
+    // create the coin request record
+    const now = new Date().toISOString().split('T')[0];
+    const fields = {
+      'Slack ID': slackId,
+      'Display Name': displayName,
+      'Action': 'Claim',
+      'Status': 'Approved',
+      'Message Link': '',
+      'Request Date': now,
+      'Coins Given': 1,
+      'Processed?': true
+    };
+
+    // save to airtable and update user coins
+    await Promise.all([
+      base('Coin Requests').create([{ fields }]),
+      getOrCreateUser(slackId, displayName)
+    ]);
+
+    // update user's coin balance
+    const userRecord = await getUserRecord(slackId);
+    if (userRecord) {
+      const currentCoins = userRecord.get('Coins') || 0;
+      await base('Users').update([
+        {
+          id: userRecord.id,
+          fields: { 'Coins': currentCoins + 1 }
+        }
+      ]);
+    }
+
+    // send confirmation DM to user
+    await client.chat.postMessage({
+      channel: slackId,
+      text: 'congrats! you got the daily stray coin, look out for another one tomorrow'
+    });
+
+    // update the original message to show who got it
+    await client.chat.update({
+      channel: channelId,
+      ts: messageTs,
+      text: `<@${slackId}> got it!`,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `<@${slackId}> got it!`
+          }
+        }
+      ]
+    });
+
+  } catch (error) {
+    console.error('Error handling random coin claim:', error);
+    // send error message to user
+    try {
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: 'sorry! zorp couldn\'t process your claim, pls try again'
+      });
+    } catch (dmError) {
+      console.error('Error sending error DM:', dmError);
+    }
+  }
+});
+
 // handle when user submits the speak form
 app.view('speak_modal', async ({ ack, view, body, client }) => {
   try {
@@ -1387,4 +1557,7 @@ receiver.app.listen(port, () => {
   
   // start the daily leaderboard scheduler
   scheduleDailyLeaderboard();
+  
+  // start the daily random coin drop scheduler
+  scheduleDailyRandomCoin();
 });
