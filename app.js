@@ -877,7 +877,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*PLANET STICKERSHEET - 25 coins*'
+              text: '*PLANET STICKERSHEET - 10 coins*'
             },
             accessory: {
               type: 'image',
