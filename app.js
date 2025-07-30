@@ -21,7 +21,7 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
 
 // define all the stickersheet types and their requirements
 const STICKERSHEET_CONFIG = {
-  stickersheet1: { name: 'PLANET STICKERSHEET', cost: 25, description: 'starter stickersheet' },
+  stickersheet1: { name: 'PLANET STICKERSHEET', cost: 10, description: 'starter stickersheet' },
   stickersheet2: { name: 'GALAXY STICKERSHEET', cost: 35, description: 'premium stickersheet', requires: 'PLANET STICKERSHEET' },
   stickersheet3: { name: 'UNIVERSE STICKERSHEET', cost: 45, description: 'ultimate stickersheet', requires: 'GALAXY STICKERSHEET' }
 };
@@ -815,7 +815,7 @@ app.command('/shop', async ({ ack, body, client }) => {
     const hasPlanet = currentStickersheets.includes('PLANET STICKERSHEET');
     const hasGalaxy = currentStickersheets.includes('GALAXY STICKERSHEET');
     
-    const canBuyPlanet = currentCoins >= 25;
+    const canBuyPlanet = currentCoins >= 10;
     const canBuyGalaxy = hasPlanet && currentCoins >= 35;
     const canBuyUniverse = hasGalaxy && currentCoins >= 45;
 
@@ -829,7 +829,7 @@ app.command('/shop', async ({ ack, body, client }) => {
       switch (key) {
         case 'stickersheet1':
           canBuy = canBuyPlanet;
-          if (!canBuy) description = 'need 25 coins';
+          if (!canBuy) description = 'need 10 coins';
           break;
         case 'stickersheet2':
           canBuy = canBuyGalaxy;
@@ -931,9 +931,9 @@ app.command('/shop', async ({ ack, body, client }) => {
             elements: [
               {
                 type: 'mrkdwn',
-                text: currentCoins >= 25 
-                  ? 'you have enough coins to buy at least one stickersheet!'
-                  : 'you need more coins to buy a stickersheet. keep collecting!'
+                              text: currentCoins >= 10 
+                ? 'you have enough coins to buy at least one stickersheet!'
+                : 'you need more coins to buy a stickersheet. keep collecting!'
               }
             ]
           },
