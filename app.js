@@ -877,7 +877,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*PLANET STICKERSHEET - 10 coins*'
+              text: '*PLANET STICKERSHEET - 7 coins*'
             },
             accessory: {
               type: 'image',
@@ -889,7 +889,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*GALAXY STICKERSHEET - 35 coins & PLANET*'
+              text: '*GALAXY STICKERSHEET - 10 coins & PLANET*'
             },
             accessory: {
               type: 'image',
@@ -901,7 +901,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*UNIVERSE STICKERSHEET - 45 coins & GALAXY*'
+              text: '*UNIVERSE STICKERSHEET - 13 coins & GALAXY*'
             },
             accessory: {
               type: 'image',
