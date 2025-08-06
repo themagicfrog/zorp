@@ -21,9 +21,9 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
 
 // define all the stickersheet types and their requirements
 const STICKERSHEET_CONFIG = {
-  stickersheet1: { name: 'PLANET STICKERSHEET', cost: 10, description: 'starter stickersheet' },
-  stickersheet2: { name: 'GALAXY STICKERSHEET', cost: 35, description: 'premium stickersheet', requires: 'PLANET STICKERSHEET' },
-  stickersheet3: { name: 'UNIVERSE STICKERSHEET', cost: 45, description: 'ultimate stickersheet', requires: 'GALAXY STICKERSHEET' }
+  stickersheet1: { name: 'PLANET STICKERSHEET', cost: 7, description: 'starter stickersheet' },
+  stickersheet2: { name: 'GALAXY STICKERSHEET', cost: 10, description: 'premium stickersheet', requires: 'PLANET STICKERSHEET' },
+  stickersheet3: { name: 'UNIVERSE STICKERSHEET', cost: 13, description: 'ultimate stickersheet', requires: 'GALAXY STICKERSHEET' }
 };
 
 // define all the activities users can do to earn coins
@@ -815,9 +815,9 @@ app.command('/shop', async ({ ack, body, client }) => {
     const hasPlanet = currentStickersheets.includes('PLANET STICKERSHEET');
     const hasGalaxy = currentStickersheets.includes('GALAXY STICKERSHEET');
     
-    const canBuyPlanet = currentCoins >= 10;
-    const canBuyGalaxy = hasPlanet && currentCoins >= 35;
-    const canBuyUniverse = hasGalaxy && currentCoins >= 45;
+    const canBuyPlanet = currentCoins >= 7;
+    const canBuyGalaxy = hasPlanet && currentCoins >= 10;
+    const canBuyUniverse = hasGalaxy && currentCoins >= 13;
 
     // create the dropdown options for stickersheets
     const stickersheetOptions = Object.entries(STICKERSHEET_CONFIG).map(([key, config]) => {
@@ -829,18 +829,18 @@ app.command('/shop', async ({ ack, body, client }) => {
       switch (key) {
         case 'stickersheet1':
           canBuy = canBuyPlanet;
-          if (!canBuy) description = 'need 10 coins';
+          if (!canBuy) description = 'need 7 coins';
           break;
         case 'stickersheet2':
           canBuy = canBuyGalaxy;
           if (!canBuy) {
-            description = 'need PLANET stickersheet + 35 coins';
+            description = 'need PLANET stickersheet + 10 coins';
           }
           break;
         case 'stickersheet3':
           canBuy = canBuyUniverse;
           if (!canBuy) {
-            description = 'need GALAXY stickersheet + 45 coins';
+            description = 'need GALAXY stickersheet + 13 coins';
           }
           break;
       }
@@ -931,7 +931,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             elements: [
               {
                 type: 'mrkdwn',
-                              text: currentCoins >= 10 
+                              text: currentCoins >= 7 
                 ? 'you have enough coins to buy at least one stickersheet!'
                 : 'you need more coins to buy a stickersheet. keep collecting!'
               }
