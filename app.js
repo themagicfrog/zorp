@@ -1032,14 +1032,10 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
     }
 
     // process the purchase - deduct coins and add stickersheet
-    await Promise.all([
+    const [newBalance, newStickersheets] = await Promise.all([
       deductCoins(slackId, config.cost),
       addStickersheet(slackId, selectedStickersheet)
     ]);
-
-    // get updated user data for confirmation message
-    const newBalance = await getUserCoins(slackId);
-    const newStickersheets = await getUserStickersheets(slackId);
 
     // list of random purchase confirmation messages
     const purchaseMessages = [
