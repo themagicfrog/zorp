@@ -1,2 +1,4 @@
 # zorp
-im a little alien (slack bot for jumpstart ysws)
+a slack bot made for the Jumpstart YSWS
+
+
