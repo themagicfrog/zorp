@@ -545,8 +545,11 @@ async function postDailyRandomCoin() {
   }
 }
 
-// schedule daily random coin drop at a random time
+// schedule daily random coin drop at a random time - DISABLED
 function scheduleDailyRandomCoin() {
+  console.log('Daily random coin drop is disabled');
+  return; // DISABLED - uncomment below to re-enable
+  
   // Calculate time until next random time (between 9 AM and 9 PM EST)
   const now = new Date();
   const estOffset = -5; // EST is UTC-5
@@ -795,8 +798,22 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
   }
 });
 
-// handle the /shop command - opens the shop where users can buy stickersheets
+// handle the /shop command - DISABLED
 app.command('/shop', async ({ ack, body, client }) => {
+  try {
+    await ack();
+    
+    await client.chat.postMessage({
+      channel: body.user_id,
+      text: 'sorry! the shop is currently closed. beep beep boop!'
+    });
+
+  } catch (error) {
+    console.error('Error in /shop command:', error);
+  }
+  
+  // DISABLED - uncomment below to re-enable shop functionality
+  /*
   try {
     await ack();
     
@@ -971,6 +988,7 @@ app.command('/shop', async ({ ack, body, client }) => {
     } catch (dmError) {
     }
   }
+  */
 });
 
 // handle when user clicks okay on the what modal
@@ -979,8 +997,22 @@ app.view('what_modal', async ({ ack }) => {
   // Modal closes automatically when ack is called
 });
 
-// handle when user submits the shop form to buy a stickersheet
+// handle when user submits the shop form to buy a stickersheet - DISABLED
 app.view('shop_modal', async ({ ack, view, body, client }) => {
+  try {
+    await ack();
+    
+    await client.chat.postMessage({
+      channel: body.user.id,
+      text: 'sorry! the shop is currently closed. beep beep boop!'
+    });
+
+  } catch (error) {
+    console.error('Error in shop modal:', error);
+  }
+  
+  // DISABLED - uncomment below to re-enable shop purchases
+  /*
   try {
     await ack();
 
@@ -1061,6 +1093,7 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
     } catch (dmError) {
     }
   }
+  */
 });
 
 // handle the /what command - shows detailed explanations of all activities
@@ -1331,8 +1364,22 @@ app.command('/update-coins', async ({ ack, body, client }) => {
   }
 });
 
-// handle random coin claim button click
+// handle random coin claim button click - DISABLED
 app.action('claim_random_coin', async ({ ack, body, client }) => {
+  try {
+    await ack();
+    
+    await client.chat.postMessage({
+      channel: body.user.id,
+      text: 'sorry! random coin drops are currently disabled. beep beep boop!'
+    });
+
+  } catch (error) {
+    console.error('Error handling random coin claim:', error);
+  }
+  
+  // DISABLED - uncomment below to re-enable random coin claims
+  /*
   try {
     await ack();
 
@@ -1414,6 +1461,7 @@ app.action('claim_random_coin', async ({ ack, body, client }) => {
       console.error('Error sending error DM:', dmError);
     }
   }
+  */
 });
 
 // handle when user submits the speak form
