@@ -895,12 +895,21 @@ app.command('/shop', async ({ ack, body, client }) => {
           break;
       }
 
+      // Ensure description doesn't exceed Slack's 75 character limit
+      if (description && description.length > 75) {
+        description = description.substring(0, 72) + '...';
+      }
+
       return {
         text: { type: 'plain_text', text },
         value: key,
-        description: { type: 'plain_text', text: description }
+        description: { type: 'plain_text', text: description || '' }
       };
     });
+
+    console.log('Shop command - stickersheetOptions:', JSON.stringify(stickersheetOptions, null, 2));
+    console.log('Shop command - currentCoins:', currentCoins);
+    console.log('Shop command - actionRemainingText length:', actionRemainingText.length);
 
     // build the action remaining text
     const remainingActions = Object.entries(actionRemaining)
@@ -920,6 +929,20 @@ app.command('/shop', async ({ ack, body, client }) => {
     } else {
       actionRemainingText = '*your remaining actions:*\n• check your actions with `/collect`';
     }
+
+    // Ensure actionRemainingText doesn't exceed Slack's text limits (3000 chars for section text)
+    if (actionRemainingText.length > 3000) {
+      actionRemainingText = actionRemainingText.substring(0, 2997) + '...';
+    }
+
+    // Validate stickersheetOptions
+    if (!stickersheetOptions || stickersheetOptions.length === 0) {
+      throw new Error('No stickersheet options available');
+    }
+
+    console.log('Shop command - About to open modal');
+    console.log('Shop command - triggerId:', triggerId);
+    console.log('Shop command - actionRemainingText:', actionRemainingText.substring(0, 100));
 
     // open the shop modal
     await client.views.open({
@@ -1008,13 +1031,6 @@ app.command('/shop', async ({ ack, body, client }) => {
           },
           {
             type: 'divider'
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: actionRemainingText
-            }
           }
         ]
       }
@@ -1316,10 +1332,10 @@ app.action('claim_random_coin', async ({ ack, body, client }) => {
       ts: messageTs,
       text: `there was a random coin, and <@${slackId}> got it! tomorrow there will be another one, so look out for it!`,
       blocks: [
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
             text: `there was a random coin, and <@${slackId}> got it! tomorrow there will be another one, so look out for it!`
           }
         }
