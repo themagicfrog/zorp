@@ -6,7 +6,9 @@ require('dotenv').config();
 // set up the express receiver to handle slack events
 const receiver = new ExpressReceiver({
   signingSecret: process.env.SLACK_SIGNING_SECRET,
-  endpoints: '/slack/events'
+  endpoints: {
+    events: '/slack/events'
+  }
 });
 
 // create the slack app instance
@@ -838,14 +840,14 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
 
 // handle the /shop command - opens the shop where users can buy stickersheets
 app.command('/shop', async ({ ack, body, client }) => {
+  console.log('SHOP HIT', body.user_id);
   try {
     await ack();
     const triggerId = body.trigger_id;
     const slackId = body.user_id;
 
-    // get user's current coins and stickersheets
+    // get user's current coins
     const currentCoins = await getUserCoins(slackId) || 0;
-    const currentStickersheets = await getUserStickersheetsList(slackId) || [];
 
     // create the dropdown options for stickersheets - match /collect pattern exactly
     const stickersheetOptions = Object.entries(STICKERSHEET_CONFIG).map(([key, config]) => {
@@ -887,9 +889,8 @@ app.command('/shop', async ({ ack, body, client }) => {
           {
             type: 'section',
             text: {
-              type: 'plain_text',
-              text: safeWelcomeText,
-              emoji: true
+              type: 'mrkdwn',
+              text: safeWelcomeText
             }
           },
           {
@@ -908,7 +909,14 @@ app.command('/shop', async ({ ack, body, client }) => {
     });
 
   } catch (error) {
-    console.error('Error in /shop command:', error);
+    console.error('SHOP ERROR', error?.data || error);
+    console.error('SHOP ERROR details:', {
+      message: error?.message,
+      data: error?.data,
+      response: error?.response?.data,
+      statusCode: error?.statusCode,
+      stack: error?.stack
+    });
     // send error message if shop can't open
     try {
       await client.chat.postMessage({
