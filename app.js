@@ -603,6 +603,14 @@ app.command('/collect', async ({ ack, body, client }) => {
     let actionRemaining = {};
     try {
       actionRemaining = await withTimeout(getUserActionRemaining(slackId), 5000);
+      console.log('Action remaining result:', actionRemaining);
+      
+      // If result is empty but we have actions with max, populate them (new base scenario)
+      if (Object.keys(actionRemaining).length === 0) {
+        COIN_ACTIONS.forEach(a => {
+          if (a.max) actionRemaining[a.value] = a.max;
+        });
+      }
     } catch (timeoutError) {
       console.error('Timeout getting action remaining:', timeoutError);
       // Fallback to showing all actions if timeout
@@ -614,6 +622,24 @@ app.command('/collect', async ({ ack, body, client }) => {
 
     // create options with remaining counts - only show available actions
     const options = COIN_ACTIONS.map(a => {
+      // If action has no max limit, it's always available
+      if (!a.max) {
+        let text = a.label;
+        if (a.coins) {
+          text += ` (${a.coins}c)`;
+        }
+        // Truncate if still too long
+        if (text.length > 75) {
+          text = text.substring(0, 72) + '...';
+        }
+        return {
+          text: { type: 'plain_text', text },
+          value: a.value,
+          canDo: true
+        };
+      }
+      
+      // For actions with max limits, check remaining
       const remaining = actionRemaining[a.value] || 0;
       const canDo = remaining > 0;
       
@@ -798,22 +824,8 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
   }
 });
 
-// handle the /shop command - DISABLED
+// handle the /shop command - opens the shop where users can buy stickersheets
 app.command('/shop', async ({ ack, body, client }) => {
-  try {
-    await ack();
-    
-    await client.chat.postMessage({
-      channel: body.user_id,
-      text: 'sorry! the shop is currently closed. beep beep boop!'
-    });
-
-  } catch (error) {
-    console.error('Error in /shop command:', error);
-  }
-  
-  // DISABLED - uncomment below to re-enable shop functionality
-  /*
   try {
     await ack();
     
@@ -948,9 +960,9 @@ app.command('/shop', async ({ ack, body, client }) => {
             elements: [
               {
                 type: 'mrkdwn',
-                              text: currentCoins >= 7 
-                ? 'you have enough coins to buy at least one stickersheet!'
-                : 'you need more coins to buy a stickersheet. keep collecting!'
+                text: currentCoins >= 7 
+                  ? 'you have enough coins to buy at least one stickersheet!'
+                  : 'you need more coins to buy a stickersheet. keep collecting!'
               }
             ]
           },
@@ -988,7 +1000,6 @@ app.command('/shop', async ({ ack, body, client }) => {
     } catch (dmError) {
     }
   }
-  */
 });
 
 // handle when user clicks okay on the what modal
@@ -997,22 +1008,8 @@ app.view('what_modal', async ({ ack }) => {
   // Modal closes automatically when ack is called
 });
 
-// handle when user submits the shop form to buy a stickersheet - DISABLED
+// handle when user submits the shop form to buy a stickersheet
 app.view('shop_modal', async ({ ack, view, body, client }) => {
-  try {
-    await ack();
-    
-    await client.chat.postMessage({
-      channel: body.user.id,
-      text: 'sorry! the shop is currently closed. beep beep boop!'
-    });
-
-  } catch (error) {
-    console.error('Error in shop modal:', error);
-  }
-  
-  // DISABLED - uncomment below to re-enable shop purchases
-  /*
   try {
     await ack();
 
@@ -1093,7 +1090,6 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
     } catch (dmError) {
     }
   }
-  */
 });
 
 // handle the /what command - shows detailed explanations of all activities
@@ -1235,6 +1231,100 @@ app.command('/what', async ({ ack, body, client }) => {
       await client.chat.postMessage({
         channel: body.user_id,
         text: 'oopsies! zorp couldn\'t open the activity guide, pls try again or ask @magic frog for help'
+      });
+    } catch (dmError) {
+      console.error('Error sending error DM:', dmError);
+    }
+  }
+});
+
+// handle the /test-airtable command - allows specific user to test Airtable connection
+app.command('/test-airtable', async ({ ack, body, client }) => {
+  try {
+    await ack();
+    
+    // check if the user is authorized (only U06UYA4AH6F can use this command)
+    if (body.user_id !== 'U06UYA4AH6F') {
+      await client.chat.postMessage({
+        channel: body.user_id,
+        text: 'why are you trying to test airtable? i\'m not a robot!'
+      });
+      return;
+    }
+
+    const slackId = body.user_id;
+    let testResults = [];
+
+    // Test 1: Check if Users table exists and can be queried
+    try {
+      const users = await base('Users').select({ maxRecords: 1 }).firstPage();
+      testResults.push('✅ Users table: Connected (found ' + users.length + ' record(s))');
+    } catch (error) {
+      testResults.push('❌ Users table: Error - ' + error.message);
+    }
+
+    // Test 2: Check if Coin Requests table exists and can be queried
+    try {
+      const requests = await base('Coin Requests').select({ maxRecords: 1 }).firstPage();
+      testResults.push('✅ Coin Requests table: Connected (found ' + requests.length + ' record(s))');
+    } catch (error) {
+      testResults.push('❌ Coin Requests table: Error - ' + error.message);
+    }
+
+    // Test 3: Check if current user exists
+    try {
+      const userRecord = await getUserRecord(slackId);
+      if (userRecord) {
+        const coins = userRecord.get('Coins') || 0;
+        const displayName = userRecord.get('Display Name') || 'Unknown';
+        testResults.push(`✅ Your user record: Found (${displayName}, ${coins} coins)`);
+      } else {
+        testResults.push('⚠️ Your user record: Not found (will be created on first /collect)');
+      }
+    } catch (error) {
+      testResults.push('❌ Your user record: Error - ' + error.message);
+    }
+
+    // Test 4: Check action remaining
+    try {
+      const actionRemaining = await getUserActionRemaining(slackId);
+      const actionCount = Object.keys(actionRemaining).length;
+      const totalRemaining = Object.values(actionRemaining).reduce((sum, val) => sum + val, 0);
+      testResults.push(`✅ Action remaining: ${actionCount} actions tracked, ${totalRemaining} total remaining`);
+      
+      // Show details
+      const details = Object.entries(actionRemaining)
+        .map(([action, remaining]) => `  • ${action}: ${remaining} left`)
+        .join('\n');
+      if (details) {
+        testResults.push('Details:\n' + details);
+      }
+    } catch (error) {
+      testResults.push('❌ Action remaining: Error - ' + error.message);
+    }
+
+    // Test 5: Check approved requests count
+    try {
+      const approvedRequests = await base('Coin Requests').select({
+        filterByFormula: `AND({Slack ID} = '${slackId}', {Status} = 'Approved')`
+      }).all();
+      testResults.push(`✅ Your approved requests: ${approvedRequests.length} found`);
+    } catch (error) {
+      testResults.push('❌ Your approved requests: Error - ' + error.message);
+    }
+
+    // Send results
+    await client.chat.postMessage({
+      channel: slackId,
+      text: '*Airtable Connection Test Results:*\n\n' + testResults.join('\n')
+    });
+
+  } catch (error) {
+    console.error('Error in /test-airtable command:', error);
+    try {
+      await client.chat.postMessage({
+        channel: body.user_id,
+        text: 'oopsies! zorp couldn\'t run the test, pls check the logs'
       });
     } catch (dmError) {
       console.error('Error sending error DM:', dmError);
