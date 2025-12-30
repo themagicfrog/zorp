@@ -1,5 +1,5 @@
 // import the slack bolt framework and airtable
-const { App, ExpressReceiver } = require('@slack/bolt');
+const { App, ExpressReceiver, LogLevel } = require('@slack/bolt');
 const Airtable = require('airtable');
 require('dotenv').config();
 
@@ -11,10 +11,22 @@ const receiver = new ExpressReceiver({
   }
 });
 
+// add middleware to log all incoming requests
+receiver.app.use((req, res, next) => {
+  console.log('INCOMING', req.method, req.path);
+  next();
+});
+
 // create the slack app instance
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
-  receiver
+  receiver,
+  logLevel: LogLevel.DEBUG
+});
+
+// add global error handler
+app.error(async (error) => {
+  console.error('BOLT ERROR', error);
 });
 
 // connect to airtable database
@@ -600,6 +612,7 @@ function scheduleDailyRandomCoin() {
 }
 
 // handle the /collect command - opens a form for users to submit coin requests
+console.log('REGISTERED /collect HANDLER');
 app.command('/collect', async ({ ack, body, client }) => {
   try {
     await ack();
@@ -839,6 +852,7 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
 });
 
 // handle the /shop command - opens the shop where users can buy stickersheets
+console.log('REGISTERED /shop HANDLER');
 app.command('/shop', async ({ ack, body, client }) => {
   console.log('SHOP HIT', body.user_id);
   try {
