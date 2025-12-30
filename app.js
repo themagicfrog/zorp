@@ -474,7 +474,11 @@ async function postDailyLeaderboard() {
 }
 
 // schedule daily leaderboard posting at 9:10 PM EST
+// schedule daily leaderboard posting at 9:10 PM EST - DISABLED
 function scheduleDailyLeaderboard() {
+  console.log('Daily leaderboard is disabled');
+  return; // DISABLED - uncomment below to re-enable
+  
   // Calculate time until next 9:10 PM EST
   const now = new Date();
   const estOffset = -5; // EST is UTC-5
@@ -898,6 +902,25 @@ app.command('/shop', async ({ ack, body, client }) => {
       };
     });
 
+    // build the action remaining text
+    const remainingActions = Object.entries(actionRemaining)
+      .filter(([action, remaining]) => remaining > 0)
+      .map(([action, remaining]) => {
+        const actionConfig = COIN_ACTIONS.find(a => a.value === action);
+        if (!actionConfig) return null;
+        return `• ${actionConfig.label} - ${remaining} left`;
+      })
+      .filter(Boolean);
+    
+    let actionRemainingText = '';
+    if (remainingActions.length > 0) {
+      actionRemainingText = '*your remaining actions:*\n' + remainingActions.join('\n');
+    } else if (Object.keys(actionRemaining).length > 0 && Object.values(actionRemaining).every(count => count === 0)) {
+      actionRemainingText = '*your remaining actions:*\n• all actions completed!';
+    } else {
+      actionRemainingText = '*your remaining actions:*\n• check your actions with `/collect`';
+    }
+
     // open the shop modal
     await client.views.open({
       trigger_id: triggerId,
@@ -990,24 +1013,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: (() => {
-                const remainingActions = Object.entries(actionRemaining)
-                  .filter(([action, remaining]) => remaining > 0)
-                  .map(([action, remaining]) => {
-                    const actionConfig = COIN_ACTIONS.find(a => a.value === action);
-                    if (!actionConfig) return null;
-                    return `• ${actionConfig.label} - ${remaining} left`;
-                  })
-                  .filter(Boolean);
-                
-                if (remainingActions.length > 0) {
-                  return '*your remaining actions:*\n' + remainingActions.join('\n');
-                } else if (Object.keys(actionRemaining).length > 0 && Object.values(actionRemaining).every(count => count === 0)) {
-                  return '*your remaining actions:*\n• all actions completed!';
-                } else {
-                  return '*your remaining actions:*\n• check your actions with `/collect`';
-                }
-              })()
+              text: actionRemainingText
             }
           }
         ]
@@ -1015,6 +1021,7 @@ app.command('/shop', async ({ ack, body, client }) => {
     });
 
   } catch (error) {
+    console.error('Error in /shop command:', error);
     // send error message if shop can't open
     try {
       await client.chat.postMessage({
@@ -1022,6 +1029,7 @@ app.command('/shop', async ({ ack, body, client }) => {
         text: 'oopies! zorp couldn\'t open the shop, pls ask @magic frog for help'
       });
     } catch (dmError) {
+      console.error('Error sending error DM:', dmError);
     }
   }
 });
