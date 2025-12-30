@@ -838,67 +838,45 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
 
 // handle the /shop command - opens the shop where users can buy stickersheets
 app.command('/shop', async ({ ack, body, client }) => {
-  console.log('SHOP COMMAND CALLED - START');
   try {
-    console.log('SHOP COMMAND - About to ack');
     await ack();
-    console.log('SHOP COMMAND - Acked successfully');
-    
-    const slackId = body.user_id;
     const triggerId = body.trigger_id;
-    console.log('SHOP COMMAND - slackId:', slackId, 'triggerId:', triggerId);
+    const slackId = body.user_id;
 
-    // get user's current coins and stickersheets (skip updateUserCoins to avoid delays)
-    const currentCoins = await getUserCoins(slackId);
-    const currentStickersheets = await getUserStickersheetsList(slackId);
-    console.log('SHOP COMMAND - currentCoins:', currentCoins);
+    // get user's current coins and stickersheets
+    const currentCoins = await getUserCoins(slackId) || 0;
+    const currentStickersheets = await getUserStickersheetsList(slackId) || [];
 
-    // check what stickersheets they can buy based on progression
-    const hasPlanet = currentStickersheets.includes('PLANET STICKERSHEET');
-    const hasGalaxy = currentStickersheets.includes('GALAXY STICKERSHEET');
-    
-    const canBuyPlanet = currentCoins >= 7;
-    const canBuyGalaxy = hasPlanet && currentCoins >= 10;
-    const canBuyUniverse = hasGalaxy && currentCoins >= 13;
-
-    // create the dropdown options for stickersheets
+    // create the dropdown options for stickersheets - match /collect pattern exactly
     const stickersheetOptions = Object.entries(STICKERSHEET_CONFIG).map(([key, config]) => {
       let text = `${config.name} - ${config.cost} coins`;
-      let description = config.description;
-
-      // customize the description based on what they can buy
-      switch (key) {
-        case 'stickersheet1':
-          if (!canBuyPlanet) description = 'need 7 coins';
-          break;
-        case 'stickersheet2':
-          if (!canBuyGalaxy) {
-            description = 'need PLANET + 10 coins';
-          }
-          break;
-        case 'stickersheet3':
-          if (!canBuyUniverse) {
-            description = 'need GALAXY + 13 coins';
-          }
-          break;
-      }
-
-      // Ensure description doesn't exceed Slack's 75 character limit
-      if (description && description.length > 75) {
-        description = description.substring(0, 72) + '...';
+      
+      // Truncate if too long (Slack limit is 75 chars for option text)
+      if (text.length > 75) {
+        text = text.substring(0, 72) + '...';
       }
 
       return {
         text: { type: 'plain_text', text },
-        value: key,
-        description: { type: 'plain_text', text: description || '' }
+        value: key
       };
     });
 
-    console.log('SHOP COMMAND - Created options, count:', stickersheetOptions.length);
+    // Ensure we have options
+    if (!stickersheetOptions || stickersheetOptions.length === 0) {
+      throw new Error('No stickersheet options available');
+    }
 
-    // Build a simple modal first to test
-    const view = {
+    // Build welcome message - ensure it's safe
+    const welcomeText = `welcome to the Zorp UFO shop! you currently have ${currentCoins} coins in your space wallet. beep beep boop what would you like to buy?`;
+    
+    // Truncate if too long (Slack limit is 3000 chars for section text)
+    const safeWelcomeText = welcomeText.length > 3000 ? welcomeText.substring(0, 2997) + '...' : welcomeText;
+
+    // open the shop modal - match /collect pattern exactly
+    await client.views.open({
+      trigger_id: triggerId,
+      view: {
         type: 'modal',
         callback_id: 'shop_modal',
         private_metadata: JSON.stringify({ slackId }),
@@ -909,12 +887,10 @@ app.command('/shop', async ({ ack, body, client }) => {
           {
             type: 'section',
             text: {
-              type: 'mrkdwn',
-            text: `*welcome to the Zorp UFO shop!*\n\nyou currently have *${currentCoins} coins* in your space wallet. beep beep boop\n\nwhat would you like to buy?`
+              type: 'plain_text',
+              text: safeWelcomeText,
+              emoji: true
             }
-          },
-          {
-            type: 'divider'
           },
           {
             type: 'input',
@@ -926,42 +902,18 @@ app.command('/shop', async ({ ack, body, client }) => {
               placeholder: { type: 'plain_text', text: 'select a stickersheet...' },
               options: stickersheetOptions
             }
-          },
-          {
-            type: 'context',
-            elements: [
-              {
-                type: 'mrkdwn',
-              text: currentCoins >= 7 
-                  ? 'you have enough coins to buy at least one stickersheet!'
-                  : 'you need more coins to buy a stickersheet. keep collecting!'
-              }
-            ]
           }
         ]
-    };
-
-    console.log('SHOP COMMAND - About to call views.open');
-    console.log('SHOP COMMAND - View structure:', JSON.stringify(view, null, 2).substring(0, 500));
-    
-    // open the shop modal
-    const result = await client.views.open({
-      trigger_id: triggerId,
-      view: view
+      }
     });
-    
-    console.log('SHOP COMMAND - views.open successful:', result);
 
   } catch (error) {
-    console.error('SHOP COMMAND - ERROR:', error);
-    console.error('SHOP COMMAND - Error stack:', error.stack);
-    console.error('SHOP COMMAND - Error details:', JSON.stringify(error, null, 2));
-    
+    console.error('Error in /shop command:', error);
     // send error message if shop can't open
     try {
       await client.chat.postMessage({
         channel: body.user_id,
-        text: `oopies! zorp couldn't open the shop. Error: ${error.message || 'unknown error'}`
+        text: 'oopies! zorp couldn\'t open the shop, pls ask @magic frog for help'
       });
     } catch (dmError) {
       console.error('Error sending error DM:', dmError);
