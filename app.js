@@ -318,6 +318,10 @@ async function getUserActionCount(slackId, action) {
     return approvedRequests.length;
   } catch (error) {
     console.error('Error getting user action count:', error);
+    // If authorization error, return 0 and let the system handle it
+    if (error.error === 'NOT_AUTHORIZED' || error.statusCode === 403) {
+      console.error('Airtable authorization error - check API key has access to base');
+    }
     return 0;
   }
 }
@@ -364,6 +368,11 @@ async function getUserActionRemaining(slackId) {
     return remaining;
   } catch (error) {
     console.error('Error getting user action remaining:', error);
+    // If authorization error, return empty and let fallback handle it
+    if (error.error === 'NOT_AUTHORIZED' || error.statusCode === 403) {
+      console.error('Airtable authorization error - check API key has access to base');
+      return {};
+    }
     return {};
   }
 }
@@ -601,6 +610,7 @@ app.command('/collect', async ({ ack, body, client }) => {
 
     // get user's remaining action counts with timeout
     let actionRemaining = {};
+    let hasAuthError = false;
     try {
       actionRemaining = await withTimeout(getUserActionRemaining(slackId), 5000);
       console.log('Action remaining result:', actionRemaining);
@@ -613,7 +623,11 @@ app.command('/collect', async ({ ack, body, client }) => {
       }
     } catch (timeoutError) {
       console.error('Timeout getting action remaining:', timeoutError);
-      // Fallback to showing all actions if timeout
+      // Check if it's an authorization error
+      if (timeoutError.error === 'NOT_AUTHORIZED' || timeoutError.statusCode === 403) {
+        hasAuthError = true;
+      }
+      // Fallback to showing all actions if timeout or error
       actionRemaining = {};
       COIN_ACTIONS.forEach(a => {
         if (a.max) actionRemaining[a.value] = a.max;
