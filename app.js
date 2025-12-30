@@ -838,28 +838,20 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
 
 // handle the /shop command - opens the shop where users can buy stickersheets
 app.command('/shop', async ({ ack, body, client }) => {
+  console.log('SHOP COMMAND CALLED - START');
   try {
+    console.log('SHOP COMMAND - About to ack');
     await ack();
+    console.log('SHOP COMMAND - Acked successfully');
     
     const slackId = body.user_id;
     const triggerId = body.trigger_id;
+    console.log('SHOP COMMAND - slackId:', slackId, 'triggerId:', triggerId);
 
-    // automatically update user's coin count before showing shop
-    await updateUserCoins(slackId);
-
-    // get user's current coins and stickersheets
+    // get user's current coins and stickersheets (skip updateUserCoins to avoid delays)
     const currentCoins = await getUserCoins(slackId);
     const currentStickersheets = await getUserStickersheetsList(slackId);
-    
-    // get action remaining with error handling
-    let actionRemaining = {};
-    try {
-      actionRemaining = await getUserActionRemaining(slackId);
-    } catch (error) {
-      console.error('Error getting action remaining in shop:', error);
-      // Continue with empty object if there's an error
-      actionRemaining = {};
-    }
+    console.log('SHOP COMMAND - currentCoins:', currentCoins);
 
     // check what stickersheets they can buy based on progression
     const hasPlanet = currentStickersheets.includes('PLANET STICKERSHEET');
@@ -871,26 +863,22 @@ app.command('/shop', async ({ ack, body, client }) => {
 
     // create the dropdown options for stickersheets
     const stickersheetOptions = Object.entries(STICKERSHEET_CONFIG).map(([key, config]) => {
-      let canBuy = false;
       let text = `${config.name} - ${config.cost} coins`;
       let description = config.description;
 
-      // customize the text and description based on what they can buy
+      // customize the description based on what they can buy
       switch (key) {
         case 'stickersheet1':
-          canBuy = canBuyPlanet;
-          if (!canBuy) description = 'need 7 coins';
+          if (!canBuyPlanet) description = 'need 7 coins';
           break;
         case 'stickersheet2':
-          canBuy = canBuyGalaxy;
-          if (!canBuy) {
-            description = 'need PLANET stickersheet + 10 coins';
+          if (!canBuyGalaxy) {
+            description = 'need PLANET + 10 coins';
           }
           break;
         case 'stickersheet3':
-          canBuy = canBuyUniverse;
-          if (!canBuy) {
-            description = 'need GALAXY stickersheet + 13 coins';
+          if (!canBuyUniverse) {
+            description = 'need GALAXY + 13 coins';
           }
           break;
       }
@@ -907,47 +895,10 @@ app.command('/shop', async ({ ack, body, client }) => {
       };
     });
 
-    console.log('Shop command - stickersheetOptions:', JSON.stringify(stickersheetOptions, null, 2));
-    console.log('Shop command - currentCoins:', currentCoins);
-    console.log('Shop command - actionRemainingText length:', actionRemainingText.length);
+    console.log('SHOP COMMAND - Created options, count:', stickersheetOptions.length);
 
-    // build the action remaining text
-    const remainingActions = Object.entries(actionRemaining)
-      .filter(([action, remaining]) => remaining > 0)
-      .map(([action, remaining]) => {
-        const actionConfig = COIN_ACTIONS.find(a => a.value === action);
-        if (!actionConfig) return null;
-        return `• ${actionConfig.label} - ${remaining} left`;
-      })
-      .filter(Boolean);
-    
-    let actionRemainingText = '';
-    if (remainingActions.length > 0) {
-      actionRemainingText = '*your remaining actions:*\n' + remainingActions.join('\n');
-    } else if (Object.keys(actionRemaining).length > 0 && Object.values(actionRemaining).every(count => count === 0)) {
-      actionRemainingText = '*your remaining actions:*\n• all actions completed!';
-    } else {
-      actionRemainingText = '*your remaining actions:*\n• check your actions with `/collect`';
-    }
-
-    // Ensure actionRemainingText doesn't exceed Slack's text limits (3000 chars for section text)
-    if (actionRemainingText.length > 3000) {
-      actionRemainingText = actionRemainingText.substring(0, 2997) + '...';
-    }
-
-    // Validate stickersheetOptions
-    if (!stickersheetOptions || stickersheetOptions.length === 0) {
-      throw new Error('No stickersheet options available');
-    }
-
-    console.log('Shop command - About to open modal');
-    console.log('Shop command - triggerId:', triggerId);
-    console.log('Shop command - actionRemainingText:', actionRemainingText.substring(0, 100));
-
-    // open the shop modal
-    await client.views.open({
-      trigger_id: triggerId,
-      view: {
+    // Build a simple modal first to test
+    const view = {
         type: 'modal',
         callback_id: 'shop_modal',
         private_metadata: JSON.stringify({ slackId }),
@@ -959,46 +910,7 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `*welcome to the Zorp UFO shop!* \n\nyou currently have *${currentCoins} coins* in your space wallet. beep beep boop\n\nwhat would you like to buy?`
-            }
-          },
-          {
-            type: 'divider'
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*PLANET STICKERSHEET - 7 coins*'
-            },
-            accessory: {
-              type: 'image',
-              image_url: 'https://hc-cdn.hel1.your-objectstorage.com/s/v3/85a6f8e64fdf613039bbaf6b54dfbcaf2e41fabd_screenshot_2025-07-22_at_8.16.00___pm.png',
-              alt_text: 'Stickersheet 1'
-            }
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*GALAXY STICKERSHEET - 10 coins & PLANET*'
-            },
-            accessory: {
-              type: 'image',
-              image_url: 'https://hc-cdn.hel1.your-objectstorage.com/s/v3/ab4f895a99881636649ac7b3e6d8e6ef26b1f86b_screenshot_2025-07-22_at_8.17.09___pm.png',
-              alt_text: 'Stickersheet 2'
-            }
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*UNIVERSE STICKERSHEET - 13 coins & GALAXY*'
-            },
-            accessory: {
-              type: 'image',
-              image_url: 'https://hc-cdn.hel1.your-objectstorage.com/s/v3/3a63a621aaf53cae43848c745597d94f5305c848_screenshot_2025-07-22_at_8.18.27___pm.png',
-              alt_text: 'Stickersheet 3'
+            text: `*welcome to the Zorp UFO shop!*\n\nyou currently have *${currentCoins} coins* in your space wallet. beep beep boop\n\nwhat would you like to buy?`
             }
           },
           {
@@ -1016,33 +928,40 @@ app.command('/shop', async ({ ack, body, client }) => {
             }
           },
           {
-            type: 'divider'
-          },
-          {
             type: 'context',
             elements: [
               {
                 type: 'mrkdwn',
-                text: currentCoins >= 7 
+              text: currentCoins >= 7 
                   ? 'you have enough coins to buy at least one stickersheet!'
                   : 'you need more coins to buy a stickersheet. keep collecting!'
               }
             ]
-          },
-          {
-            type: 'divider'
           }
         ]
-      }
+    };
+
+    console.log('SHOP COMMAND - About to call views.open');
+    console.log('SHOP COMMAND - View structure:', JSON.stringify(view, null, 2).substring(0, 500));
+    
+    // open the shop modal
+    const result = await client.views.open({
+      trigger_id: triggerId,
+      view: view
     });
+    
+    console.log('SHOP COMMAND - views.open successful:', result);
 
   } catch (error) {
-    console.error('Error in /shop command:', error);
+    console.error('SHOP COMMAND - ERROR:', error);
+    console.error('SHOP COMMAND - Error stack:', error.stack);
+    console.error('SHOP COMMAND - Error details:', JSON.stringify(error, null, 2));
+    
     // send error message if shop can't open
     try {
       await client.chat.postMessage({
         channel: body.user_id,
-        text: 'oopies! zorp couldn\'t open the shop, pls ask @magic frog for help'
+        text: `oopies! zorp couldn't open the shop. Error: ${error.message || 'unknown error'}`
       });
     } catch (dmError) {
       console.error('Error sending error DM:', dmError);
