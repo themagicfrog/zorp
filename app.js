@@ -610,10 +610,8 @@ app.command('/collect', async ({ ack, body, client }) => {
 
     // get user's remaining action counts with timeout
     let actionRemaining = {};
-    let hasAuthError = false;
     try {
       actionRemaining = await withTimeout(getUserActionRemaining(slackId), 5000);
-      console.log('Action remaining result:', actionRemaining);
       
       // If result is empty but we have actions with max, populate them (new base scenario)
       if (Object.keys(actionRemaining).length === 0) {
@@ -623,10 +621,6 @@ app.command('/collect', async ({ ack, body, client }) => {
       }
     } catch (timeoutError) {
       console.error('Timeout getting action remaining:', timeoutError);
-      // Check if it's an authorization error
-      if (timeoutError.error === 'NOT_AUTHORIZED' || timeoutError.statusCode === 403) {
-        hasAuthError = true;
-      }
       // Fallback to showing all actions if timeout or error
       actionRemaining = {};
       COIN_ACTIONS.forEach(a => {
@@ -852,7 +846,16 @@ app.command('/shop', async ({ ack, body, client }) => {
     // get user's current coins and stickersheets
     const currentCoins = await getUserCoins(slackId);
     const currentStickersheets = await getUserStickersheetsList(slackId);
-    const actionRemaining = await getUserActionRemaining(slackId);
+    
+    // get action remaining with error handling
+    let actionRemaining = {};
+    try {
+      actionRemaining = await getUserActionRemaining(slackId);
+    } catch (error) {
+      console.error('Error getting action remaining in shop:', error);
+      // Continue with empty object if there's an error
+      actionRemaining = {};
+    }
 
     // check what stickersheets they can buy based on progression
     const hasPlanet = currentStickersheets.includes('PLANET STICKERSHEET');
@@ -987,17 +990,24 @@ app.command('/shop', async ({ ack, body, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*your remaining actions:*\n' + 
-                Object.entries(actionRemaining)
+              text: (() => {
+                const remainingActions = Object.entries(actionRemaining)
                   .filter(([action, remaining]) => remaining > 0)
                   .map(([action, remaining]) => {
                     const actionConfig = COIN_ACTIONS.find(a => a.value === action);
+                    if (!actionConfig) return null;
                     return `• ${actionConfig.label} - ${remaining} left`;
                   })
-                  .join('\n') + 
-                (Object.values(actionRemaining).every(count => count === 0) 
-                  ? '\n• all actions completed!' 
-                  : '')
+                  .filter(Boolean);
+                
+                if (remainingActions.length > 0) {
+                  return '*your remaining actions:*\n' + remainingActions.join('\n');
+                } else if (Object.keys(actionRemaining).length > 0 && Object.values(actionRemaining).every(count => count === 0)) {
+                  return '*your remaining actions:*\n• all actions completed!';
+                } else {
+                  return '*your remaining actions:*\n• check your actions with `/collect`';
+                }
+              })()
             }
           }
         ]
@@ -1014,12 +1024,6 @@ app.command('/shop', async ({ ack, body, client }) => {
     } catch (dmError) {
     }
   }
-});
-
-// handle when user clicks okay on the what modal
-app.view('what_modal', async ({ ack }) => {
-  await ack();
-  // Modal closes automatically when ack is called
 });
 
 // handle when user submits the shop form to buy a stickersheet
@@ -1107,245 +1111,6 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
 });
 
 // handle the /what command - shows detailed explanations of all activities
-app.command('/what', async ({ ack, body, client }) => {
-  try {
-    await ack();
-    const triggerId = body.trigger_id;
-
-    // open a modal with detailed activity explanations
-    await client.views.open({
-      trigger_id: triggerId,
-      view: {
-        type: 'modal',
-        callback_id: 'what_modal',
-        title: { type: 'plain_text', text: 'WHAT CAN I DO?' },
-        submit: { type: 'plain_text', text: 'okay' },
-        close: { type: 'plain_text', text: 'close' },
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*here are all the things you can do to earn coins!* '
-            }
-          },
-          {
-            type: 'divider'
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*💬 Comment (1 coin)*\n• something meaningful in someone else\'s game thread\n• do you have specific feedback on how they can make it better?\n• does their game remind you of another game?\n• is there a specific thing you really like about it?\n• "cool game" or "nice" doesn\'t count'
-            }
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*👥 Huddle (2 coins)*\n• and work on your game in #jumpstart\n• join a huddle and work for at least 30 minutes\n• ideally have your video on\n• be talking about your game to others\n• actively working on your game\n• sitting in a huddle watching reels doesn\'t count\n• post a message after saying what you got done'
-            }
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*🎮 Post (3 coins)*\n• your game idea!\n• first step to making your game is to get your idea'
-            }
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*📅 Attend Event (3 coins)*\n• and post a summary message of what you learned during it or what you did\n• ex. workshops, jumpstartathons, playtest parties etc'
-            }
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*📝 Update (1 coin)*\n• there is a minimum of 1 update at 10 hours, but you are encouraged to update more often too\n• make sure it is in your game thread and send to channel\n• includes roughly what you did/learned/whats next\n• add a screen recording or image to your message'
-            }
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*📢 Share (3 coins)*\n• Jumpstart to your friends, family, or other communities you are part of (school, Discord, Reddit, your Insta)\n• because more people should know about Jumpstart\n• post a picture in #jumpstart proving that you did it'
-            }
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*🎯 Host Event (variable coins)*\n• host an online event for Jumpstarters to go too\n• coin amount will vary on the event type you host, how many people go, and what they get out of it\n• starting a huddle counts!\n• ideas include but aren\'t limited to:\n  • idea brainstorm meeting\n  • weekend jumpstart lock in\n  • playtest party for people to test out each other\'s games\n  • workshops for a cool feature you want to show others how to add to their game\n• if you have an idea, please add it to the proposed events section in the Events canvas and tag me'
-            }
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*🖼️ Poster (2 coins)*\n• print out our amazing Jumpstart poster and post it up somewhere anywhere near where you live\n• take a picture once you put it up and send to #jumpstart'
-            }
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*🎥 Record (10 coins)*\n• Jumpstart was on Hack Club\'s instagram and you can be featured on HC\'s instagram too!\n• record yourself with face and voice talking about your game:\n  • your name, age, and where you\'re from\n  • what inspired you to make your game\n  • is this your first time with game dev\n  • whats challenging, surprising, easy, fun about it\n  • what you are currently working on adding to it\n  • what you plan to do next with your game\n  • record a timelapse of you working\n  • literally anything else, the more the merrier'
-            }
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*🎨 Create Assets (15 coins)*\n• if you create all the assets you use in your game (music and art) YOU ARE SO COOL\n• they don\'t have to be the most perfect, but you should make all your game assets!!\n• it would be epic'
-            }
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*🔧 Fix Problem (variable coins)*\n• there are a lot of beginners and experienced people here and people will be running into problems\n• help someone debug and solve an issue they have in their game\n• coin amount will vary based on the problem and how much you helped'
-            }
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*📋 Task (PR) (variable coins)*\n• Jumpstart is a living growing thing and there will be tasks to make\n• i might give out a coin bounty for something to do once in a while'
-            }
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*🤝 IRL Meetup (25 coins)*\n• there are Jumpstarters from all over the world here!!\n• find someone who lives in the same town as you, find a time and place to meetup and work on your game together!\n• take a selfie and post in #jumpstart and write about what you got done, timelapse?'
-            }
-          },
-          {
-            type: 'divider'
-          },
-          {
-            type: 'context',
-            elements: [
-              {
-                type: 'mrkdwn',
-                text: 'ready to collect some coins? use `/collect` to submit your activity!'
-              }
-            ]
-          }
-        ]
-      }
-    });
-  } catch (error) {
-    console.error('Error in /what command:', error);
-    // Send error message to user if modal fails to open
-    try {
-      await client.chat.postMessage({
-        channel: body.user_id,
-        text: 'oopsies! zorp couldn\'t open the activity guide, pls try again or ask @magic frog for help'
-      });
-    } catch (dmError) {
-      console.error('Error sending error DM:', dmError);
-    }
-  }
-});
-
-// handle the /test-airtable command - allows specific user to test Airtable connection
-app.command('/test-airtable', async ({ ack, body, client }) => {
-  try {
-    await ack();
-    
-    // check if the user is authorized (only U06UYA4AH6F can use this command)
-    if (body.user_id !== 'U06UYA4AH6F') {
-      await client.chat.postMessage({
-        channel: body.user_id,
-        text: 'why are you trying to test airtable? i\'m not a robot!'
-      });
-      return;
-    }
-
-    const slackId = body.user_id;
-    let testResults = [];
-
-    // Test 1: Check if Users table exists and can be queried
-    try {
-      const users = await base('Users').select({ maxRecords: 1 }).firstPage();
-      testResults.push('✅ Users table: Connected (found ' + users.length + ' record(s))');
-    } catch (error) {
-      testResults.push('❌ Users table: Error - ' + error.message);
-    }
-
-    // Test 2: Check if Coin Requests table exists and can be queried
-    try {
-      const requests = await base('Coin Requests').select({ maxRecords: 1 }).firstPage();
-      testResults.push('✅ Coin Requests table: Connected (found ' + requests.length + ' record(s))');
-    } catch (error) {
-      testResults.push('❌ Coin Requests table: Error - ' + error.message);
-    }
-
-    // Test 3: Check if current user exists
-    try {
-      const userRecord = await getUserRecord(slackId);
-      if (userRecord) {
-        const coins = userRecord.get('Coins') || 0;
-        const displayName = userRecord.get('Display Name') || 'Unknown';
-        testResults.push(`✅ Your user record: Found (${displayName}, ${coins} coins)`);
-      } else {
-        testResults.push('⚠️ Your user record: Not found (will be created on first /collect)');
-      }
-    } catch (error) {
-      testResults.push('❌ Your user record: Error - ' + error.message);
-    }
-
-    // Test 4: Check action remaining
-    try {
-      const actionRemaining = await getUserActionRemaining(slackId);
-      const actionCount = Object.keys(actionRemaining).length;
-      const totalRemaining = Object.values(actionRemaining).reduce((sum, val) => sum + val, 0);
-      testResults.push(`✅ Action remaining: ${actionCount} actions tracked, ${totalRemaining} total remaining`);
-      
-      // Show details
-      const details = Object.entries(actionRemaining)
-        .map(([action, remaining]) => `  • ${action}: ${remaining} left`)
-        .join('\n');
-      if (details) {
-        testResults.push('Details:\n' + details);
-      }
-    } catch (error) {
-      testResults.push('❌ Action remaining: Error - ' + error.message);
-    }
-
-    // Test 5: Check approved requests count
-    try {
-      const approvedRequests = await base('Coin Requests').select({
-        filterByFormula: `AND({Slack ID} = '${slackId}', {Status} = 'Approved')`
-      }).all();
-      testResults.push(`✅ Your approved requests: ${approvedRequests.length} found`);
-    } catch (error) {
-      testResults.push('❌ Your approved requests: Error - ' + error.message);
-    }
-
-    // Send results
-    await client.chat.postMessage({
-      channel: slackId,
-      text: '*Airtable Connection Test Results:*\n\n' + testResults.join('\n')
-    });
-
-  } catch (error) {
-    console.error('Error in /test-airtable command:', error);
-    try {
-      await client.chat.postMessage({
-        channel: body.user_id,
-        text: 'oopsies! zorp couldn\'t run the test, pls check the logs'
-      });
-    } catch (dmError) {
-      console.error('Error sending error DM:', dmError);
-    }
-  }
-});
-
 // handle the /speak command - allows specific user to send messages to #jumpstart
 app.command('/speak', async ({ ack, body, client }) => {
   try {
