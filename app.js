@@ -1087,7 +1087,7 @@ app.command('/speak', async ({ ack, body, client }) => {
     } catch (dmError) {
       console.error('Error sending error DM:', dmError);
     }
-
+  }
 });
 
 // handle the /update-coins command - allows specific user to process approved coin requests
