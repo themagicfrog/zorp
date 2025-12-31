@@ -23,9 +23,9 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
 
 // define all the stickersheet types and their requirements
 const STICKERSHEET_CONFIG = {
-  stickersheet1: { name: 'PLANET STICKERSHEET', cost: 7, description: 'starter stickersheet' },
-  stickersheet2: { name: 'GALAXY STICKERSHEET', cost: 10, description: 'premium stickersheet', requires: 'PLANET STICKERSHEET' },
-  stickersheet3: { name: 'UNIVERSE STICKERSHEET', cost: 13, description: 'ultimate stickersheet', requires: 'GALAXY STICKERSHEET' }
+  stickersheet1: { name: 'PLANET STICKERSHEET', cost: 15, description: 'starter stickersheet' },
+  stickersheet2: { name: 'GALAXY STICKERSHEET', cost: 25, description: 'premium stickersheet', requires: 'PLANET STICKERSHEET' },
+  stickersheet3: { name: 'UNIVERSE STICKERSHEET', cost: 30, description: 'ultimate stickersheet', requires: 'GALAXY STICKERSHEET' }
 };
 
 // define all the activities users can do to earn coins
@@ -985,29 +985,8 @@ app.view('speak_modal', async ({ ack, view, body, client }) => {
       return;
     }
 
-    // get the channel ID for #jumpstart and join if needed
-    let channelId = '#jumpstart';
-    try {
-      const channels = await client.conversations.list({
-        types: 'public_channel,private_channel'
-      });
-      const jumpstartChannel = channels.channels.find(ch => ch.name === 'jumpstart');
-      if (jumpstartChannel) {
-        channelId = jumpstartChannel.id;
-      }
-    } catch (channelError) {
-      // fallback to using channel name
-    }
-
-    // try to join the channel if not already a member
-    try {
-      await client.conversations.join({ channel: channelId });
-    } catch (joinError) {
-      // if already a member or can't join, continue anyway
-    }
-
     await client.chat.postMessage({
-      channel: channelId,
+      channel: '#jumpstart',
       text: message
     });
 
