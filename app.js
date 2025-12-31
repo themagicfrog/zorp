@@ -704,149 +704,6 @@ app.command('/shop', async ({ ack, body, client }) => {
     const triggerId = body.trigger_id;
     const slackId = body.user_id;
 
-    const welcomeMessages = [
-      "beep beep boop! i am Zorp and i am here to help you collect coins!",
-      "hello earthling! do you hear the cows mooing? that means it's coin time!",
-      "greetings human (or whatever they say), are you ready to collect some coins?",
-      "welcome to the coin collection station! zorppy is here",
-    ];
-
-    let actionRemaining = {};
-    try {
-      actionRemaining = await withTimeout(getUserActionRemaining(slackId), 5000);
-      if (Object.keys(actionRemaining).length === 0) {
-        COIN_ACTIONS.forEach(a => {
-          if (a.max) actionRemaining[a.value] = a.max;
-        });
-      }
-    } catch (timeoutError) {
-      actionRemaining = {};
-      COIN_ACTIONS.forEach(a => {
-        if (a.max) actionRemaining[a.value] = a.max;
-      });
-    }
-
-    const options = COIN_ACTIONS.map(a => {
-      if (!a.max) {
-        let text = a.label;
-        if (a.coins) {
-          text += ` (${a.coins}c)`;
-        }
-        if (text.length > 75) {
-          text = text.substring(0, 72) + '...';
-        }
-        return {
-          text: { type: 'plain_text', text },
-          value: a.value,
-          canDo: true
-        };
-      }
-      
-      const remaining = actionRemaining[a.value] || 0;
-      const canDo = remaining > 0;
-      
-      let text = a.label;
-      if (a.coins) {
-        text += ` (${a.coins}c)`;
-      }
-      if (canDo) {
-        text += ` - ${a.max} max`;
-      } else {
-        text += ` - MAXED`;
-      }
-      
-      if (text.length > 75) {
-        text = text.substring(0, 72) + '...';
-      }
-      
-      return {
-        text: { type: 'plain_text', text },
-        value: a.value,
-        canDo: canDo
-      };
-    }).filter(option => option.canDo).map(({ text, value }) => ({ text, value }));
-
-    if (options.length === 0) {
-      await client.chat.postMessage({
-        channel: slackId,
-        text: 'wow! you\'ve completed all the available actions! 🎉 you\'re a coin collection master!'
-      });
-      return;
-    }
-
-    await client.views.open({
-      trigger_id: triggerId,
-      view: {
-        type: 'modal',
-        callback_id: 'collect_modal',
-        title: { type: 'plain_text', text: 'COLLECT COINS' },
-        submit: { type: 'plain_text', text: 'submit' },
-        close: { type: 'plain_text', text: 'cancel' },
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'plain_text',
-              text: getRandomMessage(welcomeMessages),
-              emoji: true
-            }
-          },
-          {
-            type: 'input',
-            block_id: 'action_block',
-            label: { type: 'plain_text', text: 'what did you do?' },
-            element: {
-              type: 'static_select',
-              action_id: 'action_selected',
-              placeholder: { type: 'plain_text', text: 'select an action' },
-              options: options
-            }
-          },
-          {
-            type: 'input',
-            block_id: 'thread_link_block',
-            label: { type: 'plain_text', text: 'message proof link' },
-            element: {
-              type: 'plain_text_input',
-              action_id: 'thread_link_input',
-              placeholder: { type: 'plain_text', text: 'paste the link to your #jumpstart message with proof' }
-            }
-          },
-          {
-            type: 'input',
-            block_id: 'request_note_block',
-            label: { type: 'plain_text', text: 'anything to add?' },
-            element: {
-              type: 'plain_text_input',
-              action_id: 'request_note_input',
-              placeholder: { type: 'plain_text', text: 'optional: add any additional context or notes...' }
-            },
-            optional: true
-          }
-        ]
-      }
-    });
-  } catch (error) {
-    console.error('Error in /shop command:', error);
-    try {
-      await client.chat.postMessage({
-        channel: body.user_id,
-        text: 'oopsies! zorp couldn\'t open the collection form, pls try again or ask @magic frog for help'
-      });
-    } catch (dmError) {
-      // silently fail
-    }
-  }
-});
-
-// DISABLED - original shop command code commented out
-/*
-app.command('/shop', async ({ ack, body, client }) => {
-  try {
-    await ack();
-    const triggerId = body.trigger_id;
-    const slackId = body.user_id;
-
     const currentCoins = await getUserCoins(slackId) || 0;
 
     const stickersheetOptions = Object.entries(STICKERSHEET_CONFIG).map(([key, config]) => {
@@ -906,10 +763,8 @@ app.command('/shop', async ({ ack, body, client }) => {
     }
   }
 });
-*/
 
-// DISABLED - original shop modal handler commented out
-/*
+// handle when user submits the shop form
 app.view('shop_modal', async ({ ack, view, body, client }) => {
   try {
     await ack();
@@ -983,7 +838,6 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
     }
   }
 });
-*/
 
 // handle the /speak command - admin only
 app.command('/speak', async ({ ack, body, client }) => {
