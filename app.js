@@ -481,8 +481,8 @@ function scheduleDailyRandomCoin() {
   return;
 }
 
-// handle the /collect command
-app.command('/collect', async ({ ack, body, client }) => {
+// handle the /zcollect command
+app.command('/zcollect', async ({ ack, body, client }) => {
   try {
     await ack();
     const triggerId = body.trigger_id;
@@ -611,7 +611,7 @@ app.command('/collect', async ({ ack, body, client }) => {
       }
     });
   } catch (error) {
-    console.error('Error in /collect command:', error);
+    console.error('Error in /zcollect command:', error);
     try {
       await client.chat.postMessage({
         channel: body.user_id,
@@ -697,8 +697,8 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
   }
 });
 
-// handle the /shop command
-app.command('/shop', async ({ ack, body, client }) => {
+// handle the /zshop command
+app.command('/zshop', async ({ ack, body, client }) => {
   try {
     await ack();
     const triggerId = body.trigger_id;
@@ -752,7 +752,7 @@ app.command('/shop', async ({ ack, body, client }) => {
     });
 
   } catch (error) {
-    console.error('Error in /shop command:', error);
+    console.error('Error in /zshop command:', error);
     try {
       await client.chat.postMessage({
         channel: body.user_id,
@@ -805,7 +805,7 @@ app.view('shop_modal', async ({ ack, view, body, client }) => {
     if (currentCoins < config.cost) {
       await client.chat.postMessage({
         channel: slackId,
-        text: `sorry! you only have ${currentCoins} coins but need ${config.cost} coins for ${config.name}. keep collecting with \`/collect\`!`
+        text: `sorry! you only have ${currentCoins} coins but need ${config.cost} coins for ${config.name}. keep collecting with \`/zcollect\`!`
       });
       return;
     }
@@ -1040,7 +1040,7 @@ app.command('/leaderboard', async ({ ack, body, client }) => {
     } else if (currentUserPosition > 0) {
       leaderboardText += `\n*your position:* #${currentUserPosition} with *${currentUserCoins} coins*`;
     } else {
-      leaderboardText += `\n*your position:* not ranked yet - start collecting coins with \`/collect\`!`;
+      leaderboardText += `\n*your position:* not ranked yet - start collecting coins with \`/zcollect\`!`;
     }
 
     await client.chat.postMessage({
