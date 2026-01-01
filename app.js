@@ -686,6 +686,11 @@ app.view('collect_modal', async ({ ack, view, body, client }) => {
     ]);
 
   } catch (error) {
+    console.error('Error in collect_modal submission:', error);
+    console.error('Error details:', error.message, error.stack);
+    if (error.response) {
+      console.error('Error response:', error.response.data);
+    }
     try {
       await client.chat.postMessage({
         channel: body.user.id,
